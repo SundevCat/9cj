@@ -1,0 +1,153 @@
+// 9CJ Corp — Personal AI Operating System
+// Prisma schema (SQLite)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Trade {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  direction String   // LONG | SHORT
+  entry     Float
+  exit      Float?
+  size      Float
+  pnl       Float?
+  status    String   @default("OPEN") // OPEN | CLOSED
+  notes     String?
+}
+
+model Memory {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  agent     String
+  tag       String   // TRADE | POLICY | AI | SYS | OK
+  message   String
+  metadata  String?  // JSON string
+}
+
+model Policy {
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String
+  ruleType    String   // MAX_TRADE_SIZE | DAILY_LOSS | SPEND_LIMIT | etc
+  threshold   Float
+  enabled     Boolean  @default(true)
+  violations  Int      @default(0)
+}
+
+model Task {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  title     String
+  module    String
+  priority  String   @default("MEDIUM") // HIGH | MEDIUM | LOW
+  status    String   @default("PENDING") // PENDING | APPROVED | REJECTED | DONE
+  metadata  String?
+}
+
+model Price {
+  id        Int      @id @default(autoincrement())
+  timestamp DateTime @default(now())
+  open      Float
+  high      Float
+  low       Float
+  close     Float
+  volume    Float?
+}
+
+model FinanceEntry {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  occurredOn DateTime @default(now())
+  type      String   // INCOME | EXPENSE
+  category  String
+  amount    Float
+  currency  String   @default("THB")
+  notes     String?
+}
+
+model Budget {
+  id       Int    @id @default(autoincrement())
+  category String @unique
+  monthly  Float
+  currency String @default("THB")
+}
+
+model PortfolioHolding {
+  id        Int      @id @default(autoincrement())
+  asset     String   @unique // XAU | CASH | EQUITIES | CRYPTO | ...
+  amount    Float            // amount in base currency
+  currency  String   @default("THB")
+  notes     String?
+  updatedAt DateTime @updatedAt
+}
+
+model Service {
+  id        Int            @id @default(autoincrement())
+  name      String         @unique
+  url       String
+  enabled   Boolean        @default(true)
+  createdAt DateTime       @default(now())
+  checks    ServiceCheck[]
+}
+
+model ServiceCheck {
+  id        Int      @id @default(autoincrement())
+  serviceId Int
+  service   Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  ts        DateTime @default(now())
+  ok        Boolean
+  status    Int?
+  latencyMs Int?
+  error     String?
+
+  @@index([serviceId, ts])
+}
+
+model DeployLog {
+  id      Int      @id @default(autoincrement())
+  ts      DateTime @default(now())
+  service String
+  version String?
+  status  String   @default("OK") // OK | FAIL | ROLLBACK
+  notes   String?
+}
+
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+model KanbanCard {
+  id          Int      @id @default(autoincrement())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  title       String
+  description String?
+  status      String   @default("BACKLOG") // BACKLOG | IN_PROGRESS | REVIEW | DONE
+  priority    String   @default("MEDIUM")  // HIGH | MEDIUM | LOW
+  moduleTag   String?
+  dueDate     DateTime?
+  position    Int      @default(0)
+
+  @@index([status, position])
+}
+
+model Violation {
+  id        Int      @id @default(autoincrement())
+  ts        DateTime @default(now())
+  policyId  Int
+  module    String
+  action    String
+  context   String   // JSON-encoded payload
+  severity  String   @default("MEDIUM") // HIGH | MEDIUM | LOW
+  resolved  Boolean  @default(false)
+  taskId    Int?     // link to the Task queued for human-in-loop, if any
+}

@@ -3,25 +3,71 @@
 @tailwind utilities;
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #0a0c10;
+  --foreground: #e6e9ef;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html.light {
+  --background: #f5f6f8;
+  --foreground: #14171c;
 }
 
-body {
-  color: var(--foreground);
+html.light body {
   background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  color: var(--foreground);
+}
+
+html,
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-syne), system-ui, sans-serif;
+}
+
+* {
+  border-color: #1f242d;
+}
+
+::selection {
+  background: rgba(99, 179, 237, 0.25);
+  color: #e6e9ef;
+}
+
+/* Custom scrollbar — keep it on-brand */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: #0a0c10;
+}
+::-webkit-scrollbar-thumb {
+  background: #1f242d;
+  border-radius: 6px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #2a3140;
 }
 
 @layer utilities {
   .text-balance {
     text-wrap: balance;
+  }
+  .mono {
+    font-family: var(--font-space-mono), ui-monospace, monospace;
+  }
+  .display {
+    font-family: var(--font-syne), system-ui, sans-serif;
+    letter-spacing: -0.01em;
+  }
+  .panel {
+    background: #111318;
+    border: 1px solid #1f242d;
+    border-radius: 8px;
+  }
+  .panel-raised {
+    background: #161a22;
+    border: 1px solid #1f242d;
+    border-radius: 8px;
   }
 }

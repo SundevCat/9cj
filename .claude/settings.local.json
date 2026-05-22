@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir D:\\\\project\\\\9cj)",
+      "PowerShell(npx prisma migrate dev --name init --skip-seed 2>&1)",
+      "PowerShell($env:PORT=3000; npm run dev 2>&1)",
+      "mcp__Claude_Preview__preview_start",
+      "PowerShell(Get-NetTCPConnection -LocalPort 3000 -ErrorAction SilentlyContinue | Select-Object OwningProcess, State | ForEach-Object { $p = Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue; \"$\\($_.State\\) PID=$\\($_.OwningProcess\\) Name=$\\($p.ProcessName\\)\" })",
+      "PowerShell(try { $r = Invoke-WebRequest -Uri \"http://localhost:3000/api/price\" -UseBasicParsing -TimeoutSec 30; \"PRICE: $\\($r.Content\\)\" } catch { \"ERROR: $_\" })"
+    ]
+  }
+}
