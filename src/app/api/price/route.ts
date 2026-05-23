@@ -21,6 +21,8 @@ export async function GET() {
 
   return NextResponse.json({
     price: spot.price,
+    bid: spot.bid ?? null,
+    ask: spot.ask ?? null,
     source: spot.source,
     fetchedAt: spot.fetchedAt,
     delta: Number(delta.toFixed(2)),

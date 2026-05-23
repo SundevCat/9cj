@@ -35,10 +35,11 @@ Answer the prompts with:
 }
 ```
 
-> Note: with App Router + SSE + SQLite the cleanest packaging path is actually
-> to ship Next.js in standalone mode (`output: "standalone"` in `next.config.mjs`)
-> and have Tauri launch the Node server as a sidecar. Pure static export drops
-> the API routes.
+> Note: with App Router + SSE + Postgres the cleanest packaging path is to ship
+> Next.js in standalone mode (`output: "standalone"` in `next.config.mjs`) and
+> have Tauri launch the Node server as a sidecar (and Postgres in its own
+> container or as an embedded service). Pure static export drops the API routes
+> and SSE.
 
 ---
 

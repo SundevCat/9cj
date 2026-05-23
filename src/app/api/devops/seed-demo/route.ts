@@ -14,7 +14,7 @@ export async function POST() {
   await prisma.service.createMany({
     data: [
       { name: "9cj-app",       url: "http://localhost:3000" },
-      { name: "anthropic-api", url: "https://api.anthropic.com/v1/models" },
+      { name: "anthropic-api", url: "https://status.anthropic.com/api/v2/status.json" },
       { name: "gold-api",      url: "https://api.gold-api.com/price/XAU" },
       { name: "github",        url: "https://api.github.com" },
       { name: "cloudflare-1.1.1.1", url: "https://1.1.1.1" },

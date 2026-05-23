@@ -13,6 +13,7 @@ const NAV: NavGroup[] = [
       { label: "Dashboard", href: "/" },
       { label: "Daily Briefing", href: "/briefing" },
       { label: "AI Agents", href: "/agents" },
+      { label: "Manual (TH)", href: "/manual" },
     ],
   },
   {

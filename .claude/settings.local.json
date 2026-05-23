@@ -6,7 +6,13 @@
       "PowerShell($env:PORT=3000; npm run dev 2>&1)",
       "mcp__Claude_Preview__preview_start",
       "PowerShell(Get-NetTCPConnection -LocalPort 3000 -ErrorAction SilentlyContinue | Select-Object OwningProcess, State | ForEach-Object { $p = Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue; \"$\\($_.State\\) PID=$\\($_.OwningProcess\\) Name=$\\($p.ProcessName\\)\" })",
-      "PowerShell(try { $r = Invoke-WebRequest -Uri \"http://localhost:3000/api/price\" -UseBasicParsing -TimeoutSec 30; \"PRICE: $\\($r.Content\\)\" } catch { \"ERROR: $_\" })"
+      "PowerShell(try { $r = Invoke-WebRequest -Uri \"http://localhost:3000/api/price\" -UseBasicParsing -TimeoutSec 30; \"PRICE: $\\($r.Content\\)\" } catch { \"ERROR: $_\" })",
+      "Bash(curl -s http://localhost:3000/api/broker/info)",
+      "Bash(curl -s http://localhost:3000/api/autotrader)",
+      "Bash(curl -s http://localhost:3000/api/price)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000/xau)",
+      "Bash(curl -s http://localhost:3000/api/broker/account)",
+      "Bash(npm run *)"
     ]
   }
 }

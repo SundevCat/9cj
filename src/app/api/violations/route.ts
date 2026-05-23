@@ -12,15 +12,11 @@ export async function GET() {
     where: { id: { in: violations.map((v) => v.policyId) } },
   });
   const map = new Map(policies.map((p) => [p.id, p]));
+  // context is a Postgres Json column — already parsed
   return NextResponse.json({
     violations: violations.map((v) => ({
       ...v,
-      context: safeParse(v.context),
       policyName: map.get(v.policyId)?.name ?? `policy#${v.policyId}`,
     })),
   });
-}
-
-function safeParse(s: string) {
-  try { return JSON.parse(s); } catch { return s; }
 }

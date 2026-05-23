@@ -15,7 +15,7 @@ export async function PATCH(
   const body = await req.json().catch(() => ({}));
   const status = String(body.status || "").toUpperCase();
   if (!VALID.has(status)) {
-    return NextResponse.json({ error: `status must be one of ${[...VALID].join(", ")}` }, { status: 400 });
+    return NextResponse.json({ error: `status must be one of ${Array.from(VALID).join(", ")}` }, { status: 400 });
   }
 
   const task = await prisma.task.update({ where: { id }, data: { status } });

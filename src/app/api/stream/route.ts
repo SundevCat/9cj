@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { fetchSpotXAU } from "@/lib/goldApi";
 import { ensurePriceHistory, recordTick } from "@/lib/seed";
+import { tick as autoTraderTick } from "@/lib/autoTrader";
 
 export const dynamic = "force-dynamic";
 
@@ -127,7 +128,7 @@ export async function GET(req: NextRequest) {
           for (const c of healthyChecks) {
             if (!latestPerService.has(c.serviceId)) latestPerService.set(c.serviceId, c.ok);
           }
-          const healthy = [...latestPerService.values()].filter(Boolean).length;
+          const healthy = Array.from(latestPerService.values()).filter(Boolean).length;
           // Crude price perf: pct change of last vs 100 candles back
           const recent = await prisma.price.findMany({ orderBy: { timestamp: "desc" }, take: 100 });
           const pricePerf = recent.length > 1 ? (recent[0].close - recent[recent.length - 1].close) / recent[recent.length - 1].close : 0;
@@ -139,6 +140,23 @@ export async function GET(req: NextRequest) {
             approvalsPending: approvals,
             pricePerf: Number((pricePerf * 100).toFixed(3)),
           });
+
+          // Auto-trader — fire after metrics so the dashboard reflects the latest state
+          // when the action toast lands. Errors are swallowed so the SSE pulse stays alive.
+          try {
+            const at = await autoTraderTick();
+            if (at.action !== "NONE" && at.action !== "HOLD") {
+              send({
+                type: "alert",
+                severity: at.action === "ERROR" ? "HIGH" : at.action === "QUEUED" ? "HIGH" : "MEDIUM",
+                title: `Autotrader · ${at.action}`,
+                message: at.detail,
+                module: "xau",
+              });
+            }
+          } catch {
+            // Auto-trader bugs must not kill the SSE pulse
+          }
         } catch (e) {
           // Don't crash the stream on a transient error
           send({

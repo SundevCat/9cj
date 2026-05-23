@@ -16,6 +16,8 @@ const TONE_CLS: Record<string, string> = {
   purple: "bg-accent-purple/15 text-accent-purple border-accent-purple/40 hover:bg-accent-purple/25",
 };
 
+type BrokerInfo = { name: "capital" | "none"; configured: boolean; envHint?: string };
+
 export function SettingsPage() {
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
@@ -23,16 +25,21 @@ export function SettingsPage() {
   const [hassUrl, setHassUrl] = useState("");
   const [hassToken, setHassToken] = useState("");
   const [claudeKey, setClaudeKey] = useState("");
+  const [broker, setBroker] = useState<BrokerInfo | null>(null);
 
   async function load() {
-    const j = await fetch("/api/settings", { cache: "no-store" }).then((r) => r.json());
-    setSettings(j.settings ?? {});
-    const initialTheme = (j.settings?.["ui.theme"] as "dark" | "light") || (typeof window !== "undefined" ? (localStorage.getItem("ui.theme") as "dark" | "light") : "dark") || "dark";
+    const [s, b] = await Promise.all([
+      fetch("/api/settings", { cache: "no-store" }).then((r) => r.json()),
+      fetch("/api/broker/info", { cache: "no-store" }).then((r) => r.json()).catch(() => ({ broker: null })),
+    ]);
+    setSettings(s.settings ?? {});
+    const initialTheme = (s.settings?.["ui.theme"] as "dark" | "light") || (typeof window !== "undefined" ? (localStorage.getItem("ui.theme") as "dark" | "light") : "dark") || "dark";
     setTheme(initialTheme);
     applyTheme(initialTheme);
-    setHassUrl(j.settings?.["hass.url"] ?? "");
-    setHassToken(j.settings?.["hass.token"] ?? "");
-    setClaudeKey(j.settings?.["claude.api_key"] ?? "");
+    setHassUrl(s.settings?.["hass.url"] ?? "");
+    setHassToken(s.settings?.["hass.token"] ?? "");
+    setClaudeKey(s.settings?.["claude.api_key"] ?? "");
+    setBroker(b.broker ?? null);
   }
   useEffect(() => { load(); }, []);
 
@@ -128,16 +135,50 @@ export function SettingsPage() {
             ))}
           </div>
           <div className="mono text-[10px] text-ink-dim">
-            Each loader resets that module's tables and seeds a believable spread.
+            Each loader resets that module&apos;s tables and seeds a believable spread.
           </div>
         </div>
+      </div>
+
+      {/* Broker status */}
+      <div className="panel p-4 flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <div className="display text-sm font-semibold">Live Trading Broker</div>
+          {broker && (
+            <span className={`mono text-[10px] uppercase tracking-widest px-2 py-1 rounded ring-1 ${
+              broker.configured
+                ? "bg-accent-green/15 text-accent-green ring-accent-green/40"
+                : broker.name === "none"
+                  ? "bg-bg-raised text-ink-muted ring-line"
+                  : "bg-accent-amber/15 text-accent-amber ring-accent-amber/40"
+            }`}>
+              {broker.name} · {broker.configured ? "READY" : broker.name === "none" ? "NONE" : "INCOMPLETE"}
+            </span>
+          )}
+        </div>
+        {broker ? (
+          <div className="flex flex-col gap-1">
+            <div className="mono text-[11px] text-ink-muted">
+              Active broker: <span className="text-ink">{broker.name}</span>
+            </div>
+            {broker.envHint && (
+              <div className="mono text-[11px] text-accent-amber">{broker.envHint}</div>
+            )}
+            <div className="mono text-[10px] text-ink-dim mt-1">
+              Capital.com is the only supported broker. Fill the <code className="text-ink">CAPITAL_*</code> vars in <code className="text-ink">.env</code> and restart <code className="text-ink">npm run dev</code> to activate.
+              See <code className="text-ink">docs/BROKERS.md</code> for details.
+            </div>
+          </div>
+        ) : (
+          <div className="mono text-[11px] text-ink-dim">loading broker info…</div>
+        )}
       </div>
 
       {/* Integrations */}
       <form onSubmit={saveKeys} className="panel p-4 flex flex-col gap-3">
         <div className="display text-sm font-semibold">Integrations</div>
         <p className="mono text-[11px] text-ink-dim">
-          Stored in the local SQLite <code className="text-ink">Setting</code> table. The server reads these at request time;
+          Stored in the local Postgres <code className="text-ink">Setting</code> table. The server reads these at request time;
           restart the dev server after changing for them to take effect.
         </p>
         <Field label="Home Assistant URL">

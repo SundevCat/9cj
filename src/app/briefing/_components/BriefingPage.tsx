@@ -79,7 +79,7 @@ export function BriefingPage() {
             <Signal label="MACD" value={b.xau.macd.macd?.toFixed(2) ?? "—"} signal={b.xau.macd.trend} />
             <Signal label="EMA" value={b.xau.ema.ema50?.toFixed(0) ?? "—"} signal={b.xau.ema.signal} />
           </div>
-          <div className="mono text-[10px] text-ink-dim">today's trading P&L: <span className={b.trading.today >= 0 ? "text-accent-green" : "text-accent-red"}>{b.trading.today >= 0 ? "+" : ""}{b.trading.today.toFixed(2)}</span></div>
+          <div className="mono text-[10px] text-ink-dim">today&apos;s trading P&amp;L: <span className={b.trading.today >= 0 ? "text-accent-green" : "text-accent-red"}>{b.trading.today >= 0 ? "+" : ""}{b.trading.today.toFixed(2)}</span></div>
         </div>
 
         {/* Finance */}

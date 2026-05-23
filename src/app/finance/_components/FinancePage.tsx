@@ -196,7 +196,7 @@ export function FinancePage() {
                   <YAxis stroke="#5a6273" tick={{ fontFamily: "var(--font-space-mono)", fontSize: 10 }} />
                   <Tooltip
                     contentStyle={{ background: "#0a0c10", border: "1px solid #1f242d", fontFamily: "var(--font-space-mono)", fontSize: 11 }}
-                    formatter={(v: number) => fmtTHB.format(v)}
+                    formatter={(v) => fmtTHB.format(Number(v))}
                   />
                   <ReferenceLine y={0} stroke="#1f242d" />
                   <Bar dataKey="income" fill="#68D391" />

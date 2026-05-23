@@ -51,7 +51,7 @@ export function parseStatementCSV(csv: string): ParsedRow[] {
     const parts = lines[i].split(",");
     if (parts.length <= Math.max(di, desci, ai)) continue;
     const rawDate = parts[di].trim();
-    let ts = Date.parse(rawDate);
+    const ts = Date.parse(rawDate);
     if (Number.isNaN(ts)) continue;
     const desc = parts[desci].trim().replace(/^"|"$/g, "");
     const amount = Number(parts[ai].replace(/[,]/g, ""));

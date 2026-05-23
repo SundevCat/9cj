@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 
 type Spot = {
   price: number;
+  bid: number | null;
+  ask: number | null;
   source: string;
   fetchedAt: string;
   delta: number;
@@ -50,21 +52,49 @@ export function PriceTicker({ refreshMs = 30_000 }: { refreshMs?: number }) {
     flash === "down" ? "text-accent-red" :
     "text-accent-amber";
   const deltaTone = (spot?.delta ?? 0) >= 0 ? "text-accent-green" : "text-accent-red";
+  const sourceLabel =
+    spot?.source === "capital" ? "Capital.com (bid/ask)" :
+    spot?.source === "gold-api" ? "gold-api.com" :
+    spot?.source ?? "—";
+  const spread = spot?.bid && spot?.ask ? (spot.ask - spot.bid).toFixed(2) : null;
 
   return (
-    <div className="panel p-5 flex items-center justify-between gap-6">
+    <div className="panel p-5 flex flex-wrap items-center justify-between gap-6">
+      {/* Main price */}
       <div className="flex flex-col gap-1">
         <div className="mono text-[10px] uppercase tracking-widest text-ink-dim">
-          XAU / USD · spot
+          XAU / USD · Spot
         </div>
         <div className={`mono text-4xl font-bold transition-colors ${priceTone}`}>
           {spot ? spot.price.toFixed(2) : "—"}
         </div>
         <div className="mono text-[11px] text-ink-muted">
-          source: {spot?.source ?? "—"} · {spot ? new Date(spot.fetchedAt).toLocaleTimeString("en-GB") : "—"}
+          {sourceLabel} · {spot ? new Date(spot.fetchedAt).toLocaleTimeString("en-GB") : "—"}
           {err && <span className="ml-2 text-accent-red">· {err}</span>}
         </div>
       </div>
+
+      {/* Bid / Ask (only when the broker source provides them) */}
+      {spot?.bid && spot?.ask && (
+        <div className="flex gap-5">
+          <div className="flex flex-col gap-1">
+            <div className="mono text-[10px] uppercase tracking-widest text-ink-dim">Bid</div>
+            <div className="mono text-lg font-bold text-accent-red">{spot.bid.toFixed(2)}</div>
+          </div>
+          <div className="flex flex-col gap-1">
+            <div className="mono text-[10px] uppercase tracking-widest text-ink-dim">Ask</div>
+            <div className="mono text-lg font-bold text-accent-green">{spot.ask.toFixed(2)}</div>
+          </div>
+          {spread && (
+            <div className="flex flex-col gap-1">
+              <div className="mono text-[10px] uppercase tracking-widest text-ink-dim">Spread</div>
+              <div className="mono text-lg font-bold text-ink-muted">{spread}</div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Delta */}
       <div className="text-right flex flex-col gap-1">
         <div className="mono text-[10px] uppercase tracking-widest text-ink-dim">
           Δ vs last candle

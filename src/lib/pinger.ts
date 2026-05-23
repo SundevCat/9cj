@@ -1,5 +1,5 @@
 // HTTP health check. Returns latency and HTTP status.
-// We treat any 2xx/3xx as healthy.
+// We treat 2xx/3xx as healthy, and 401/403 as "reachable" (server is up, auth required).
 
 export type PingResult = {
   ok: boolean;
@@ -20,7 +20,8 @@ export async function pingUrl(url: string, timeoutMs = 5000): Promise<PingResult
       redirect: "manual",
     });
     const latencyMs = Date.now() - start;
-    const ok = res.status >= 200 && res.status < 400;
+    // 2xx/3xx = healthy; 401/403 = reachable (API is up, just needs auth)
+    const ok = (res.status >= 200 && res.status < 400) || res.status === 401 || res.status === 403;
     return { ok, status: res.status, latencyMs, error: ok ? null : `HTTP ${res.status}` };
   } catch (e) {
     return {

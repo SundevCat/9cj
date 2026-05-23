@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -19,9 +20,8 @@ export async function GET(req: NextRequest) {
     }
     return b.createdAt.getTime() - a.createdAt.getTime();
   });
-  return NextResponse.json({
-    tasks: tasks.map((t) => ({ ...t, metadata: t.metadata ? safeParse(t.metadata) : null })),
-  });
+  // metadata is already JSON (native Postgres Json column) — no parse needed
+  return NextResponse.json({ tasks });
 }
 
 export async function POST(req: NextRequest) {
@@ -36,10 +36,8 @@ export async function POST(req: NextRequest) {
       module: String(body.module),
       priority,
       status: "PENDING",
-      metadata: body.metadata ? JSON.stringify(body.metadata) : null,
+      metadata: body.metadata ? (body.metadata as Prisma.InputJsonValue) : Prisma.JsonNull,
     },
   });
   return NextResponse.json({ task }, { status: 201 });
 }
-
-function safeParse(s: string) { try { return JSON.parse(s); } catch { return s; } }

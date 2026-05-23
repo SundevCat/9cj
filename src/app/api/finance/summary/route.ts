@@ -20,7 +20,7 @@ export async function GET() {
     else cur.expense += e.amount;
     monthly.set(k, cur);
   }
-  const months = [...monthly.entries()]
+  const months = Array.from(monthly.entries())
     .sort(([a], [b]) => (a < b ? -1 : 1))
     .slice(-12)
     .map(([month, v]) => ({ month, income: round(v.income), expense: round(v.expense), net: round(v.income - v.expense) }));

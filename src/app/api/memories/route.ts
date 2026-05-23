@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -51,7 +52,7 @@ export async function POST(req: NextRequest) {
       agent: String(body.agent),
       tag: String(body.tag).toUpperCase(),
       message: String(body.message),
-      metadata: body.metadata ? JSON.stringify(body.metadata) : null,
+      metadata: body.metadata ? (body.metadata as Prisma.InputJsonValue) : Prisma.JsonNull,
     },
   });
   return NextResponse.json({ memory }, { status: 201 });

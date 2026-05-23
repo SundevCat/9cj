@@ -120,7 +120,7 @@ export function ApprovalsPage() {
               </div>
               {hits.length > 0 && (
                 <div className="bg-bg-raised/60 rounded p-2 flex flex-col gap-1">
-                  <div className="mono text-[10px] uppercase tracking-widest text-ink-dim">Why it's flagged</div>
+                  <div className="mono text-[10px] uppercase tracking-widest text-ink-dim">Why it&apos;s flagged</div>
                   {hits.map((h, i) => (
                     <div key={i} className="mono text-[11px]">
                       <span className="text-accent-purple">{h.name}</span>

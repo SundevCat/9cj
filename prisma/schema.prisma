@@ -1,25 +1,37 @@
 // 9CJ Corp — Personal AI Operating System
-// Prisma schema (SQLite)
+// Prisma schema (PostgreSQL)
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
 model Trade {
-  id        Int      @id @default(autoincrement())
-  createdAt DateTime @default(now())
-  direction String   // LONG | SHORT
-  entry     Float
-  exit      Float?
-  size      Float
-  pnl       Float?
-  status    String   @default("OPEN") // OPEN | CLOSED
-  notes     String?
+  id            Int      @id @default(autoincrement())
+  createdAt     DateTime @default(now())
+  direction     String   // LONG | SHORT
+  entry         Float
+  exit          Float?
+  size          Float    // contracts (1 contract = 100 oz on Capital GOLD CFD)
+  pnl           Float?
+  status        String   @default("OPEN")  // OPEN | CLOSED | CANCELLED
+  notes         String?
+  // Live broker fields (broker-agnostic; currently Capital.com).
+  // @map preserves the existing OANDA-named columns so historical rows keep their values.
+  brokerDealId  String?  @map("oandaTradeId")  // Capital dealId; old OANDA tradeId values preserved
+  brokerOrderId String?  @map("oandaOrderId")  // Capital dealReference; old OANDA orderId values preserved
+  fillPrice     Float?   // actual fill price from broker
+  isLive        Boolean  @default(false)       // false = journal only, true = real live trade
+  instrument    String   @default("XAU_USD")
+  stopLoss      Float?
+  takeProfit    Float?
+
+  @@index([createdAt])
+  @@index([status])
 }
 
 model Memory {
@@ -28,7 +40,10 @@ model Memory {
   agent     String
   tag       String   // TRADE | POLICY | AI | SYS | OK
   message   String
-  metadata  String?  // JSON string
+  metadata  Json?    // native JSON (PostgreSQL)
+
+  @@index([createdAt])
+  @@index([tag])
 }
 
 model Policy {
@@ -48,7 +63,9 @@ model Task {
   module    String
   priority  String   @default("MEDIUM") // HIGH | MEDIUM | LOW
   status    String   @default("PENDING") // PENDING | APPROVED | REJECTED | DONE
-  metadata  String?
+  metadata  Json?    // native JSON (PostgreSQL)
+
+  @@index([status])
 }
 
 model Price {
@@ -59,17 +76,23 @@ model Price {
   low       Float
   close     Float
   volume    Float?
+  source    String   @default("gold-api") // gold-api | oanda
+
+  @@index([timestamp])
 }
 
 model FinanceEntry {
-  id        Int      @id @default(autoincrement())
-  createdAt DateTime @default(now())
+  id         Int      @id @default(autoincrement())
+  createdAt  DateTime @default(now())
   occurredOn DateTime @default(now())
-  type      String   // INCOME | EXPENSE
-  category  String
-  amount    Float
-  currency  String   @default("THB")
-  notes     String?
+  type       String   // INCOME | EXPENSE
+  category   String
+  amount     Float
+  currency   String   @default("THB")
+  notes      String?
+
+  @@index([occurredOn])
+  @@index([type, category])
 }
 
 model Budget {
@@ -117,6 +140,8 @@ model DeployLog {
   version String?
   status  String   @default("OK") // OK | FAIL | ROLLBACK
   notes   String?
+
+  @@index([ts])
 }
 
 model Setting {
@@ -146,8 +171,30 @@ model Violation {
   policyId  Int
   module    String
   action    String
-  context   String   // JSON-encoded payload
+  context   Json     // native JSON (PostgreSQL)
   severity  String   @default("MEDIUM") // HIGH | MEDIUM | LOW
   resolved  Boolean  @default(false)
-  taskId    Int?     // link to the Task queued for human-in-loop, if any
+  taskId    Int?
+
+  @@index([ts])
+  @@index([resolved])
+}
+
+// Broker account snapshot — cached to avoid excessive API calls
+model BrokerSnapshot {
+  id             Int      @id @default(autoincrement())
+  fetchedAt      DateTime @default(now())
+  broker         String   @default("capital") // origin broker (capital | none)
+  accountId      String
+  balance        Float
+  unrealizedPL   Float
+  realizedPL     Float
+  marginUsed     Float
+  openTradeCount Int
+  raw            Json     // full account JSON from the broker
+
+  // @@map keeps the existing Postgres table so we don't lose snapshots.
+  // Table can be renamed in a cleanup migration later.
+  @@map("OandaSnapshot")
+  @@index([fetchedAt])
 }

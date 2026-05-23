@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import type { UTCTimestamp } from "lightweight-charts";
 
 type Candle = {
   timestamp: number;
@@ -56,8 +57,8 @@ export function CandlestickChart({ height = 360 }: { height?: number }) {
       if (disposed) return;
 
       const series = json.candles.map((c) => ({
-        // lightweight-charts time as unix seconds
-        time: Math.floor(c.timestamp / 1000),
+        // lightweight-charts v5 wants Time (branded UnixSeconds) — Math.floor returns plain number, so cast
+        time: Math.floor(c.timestamp / 1000) as UTCTimestamp,
         open: c.open,
         high: c.high,
         low: c.low,

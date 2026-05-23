@@ -2,6 +2,7 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { PriceTicker } from "./_components/PriceTicker";
 import { SignalDashboard } from "./_components/SignalDashboard";
 import { CandlestickChart } from "./_components/CandlestickChart";
+import { AutoTraderPanel } from "./_components/AutoTraderPanel";
 import { TradeJournal } from "./_components/TradeJournal";
 
 export default function Page() {
@@ -13,7 +14,7 @@ export default function Page() {
             Quant XAU Desk
           </h1>
           <p className="mono text-xs text-ink-muted mt-1 uppercase tracking-widest">
-            Live gold · RSI / MACD / EMA · trade journal
+            Live gold · RSI / MACD / EMA · auto-trader · journal
           </p>
         </div>
         <StatusBadge label="LIVE · 30s" tone="amber" pulse />
@@ -24,6 +25,8 @@ export default function Page() {
       <SignalDashboard refreshMs={30_000} />
 
       <CandlestickChart height={380} />
+
+      <AutoTraderPanel />
 
       <TradeJournal />
     </div>

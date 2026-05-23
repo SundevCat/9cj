@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-A local-first Personal AI Operating System built as a dark OS-style web dashboard. Runs on `localhost:3000`. No cloud dependency — all data stored in local SQLite via Prisma.
+A Personal AI Operating System built as a dark OS-style web dashboard. Runs on `localhost:3000`. State lives in local PostgreSQL via Prisma. Live trading goes through Capital.com's REST API.
 
 ## Tech Stack
 
@@ -11,23 +11,46 @@ A local-first Personal AI Operating System built as a dark OS-style web dashboar
 | Framework | Next.js 14 (App Router, `src/` directory) |
 | Language | TypeScript |
 | Styling | Tailwind CSS |
-| Database | SQLite via Prisma ORM |
+| Database | PostgreSQL (Docker) via Prisma ORM |
 | Charts | Recharts + Lightweight Charts (TradingView) |
 | Indicators | `technicalindicators` npm package |
-| Price Data | Gold-API.io (free tier) |
-| Smart Home | Home Assistant local REST API |
+| Price Data | Capital.com (primary, bid/ask) → gold-api.com (fallback) → synthetic |
+| Broker (live trades) | Capital.com REST API (demo or live) |
+| Smart Home | Home Assistant local REST API (optional) |
 | Drag-Drop | @dnd-kit/core + @dnd-kit/sortable |
 
 ## Commands
 
 ```bash
-npm run dev       # Start dev server (localhost:3000)
-npm run build     # Production build
-npm run lint      # ESLint
-npx prisma studio # Open Prisma DB browser
-npx prisma db push # Sync schema to SQLite
-npx prisma generate # Regenerate Prisma client
+npm run dev               # Start dev server (localhost:3000)
+npm run build             # Production build
+npm run lint              # ESLint
+npx prisma studio         # Open Prisma DB browser
+npx prisma migrate dev    # Apply schema changes (preferred)
+npx prisma db push        # Sync schema without migration history (dev shortcut)
+npx prisma generate       # Regenerate Prisma client
 ```
+
+### Always run after a job
+
+After finishing any meaningful change (new module, schema edit, refactor), run
+both of these and fix anything that comes up:
+
+```bash
+npm run lint
+npm run build
+```
+
+The build catches type errors `next dev` doesn't surface (the build worker
+uses stricter TS settings, e.g. it won't iterate `Map` / `Set` with `[...]`
+spread — use `Array.from(...)` instead). Common type traps in this codebase:
+
+- Prisma `Json?` columns: use `metadata ? (metadata as Prisma.InputJsonValue) : Prisma.JsonNull` — never raw `null`, never `JSON.stringify` (Postgres column is native JSON).
+- `Map.entries()` / `Map.values()` / `Set` spread: use `Array.from(...)`, not `[...x]`.
+- `routeAction({ pnl })`: expects `number | undefined`, not `number | null` — pass `pnl ?? undefined`.
+- Recharts `<Tooltip formatter>`: param is `ValueType | undefined`, not `number` — coerce with `Number(v)`.
+- lightweight-charts v5 `time`: cast unix-seconds to `UTCTimestamp` (`import type { UTCTimestamp } from "lightweight-charts"`).
+- Apostrophes inside JSX text need `&apos;` (e.g. `module&apos;s`).
 
 ## Project Structure
 
@@ -35,7 +58,7 @@ npx prisma generate # Regenerate Prisma client
 src/
 ├── app/
 │   ├── page.tsx                          # Dashboard (root)
-│   ├── layout.tsx                        # Root layout with shell
+│   ├── layout.tsx                        # Root layout with shell + StreamProvider
 │   ├── agents/                           # AI Orchestration module
 │   ├── approvals/                        # Human-in-Loop module
 │   ├── backtest/                         # Backtest Lab module
@@ -47,15 +70,18 @@ src/
 │   ├── policy/                           # Policy Governance module
 │   ├── product-ops/                      # ProductOps Kanban board
 │   ├── settings/                         # Settings page
-│   ├── xau/                              # Quant XAU Trading Desk
+│   ├── xau/                              # Quant XAU Trading Desk + auto-trader
 │   └── api/                              # API routes (see below)
 ├── components/
 │   ├── shell/                            # Layout: Topbar, Sidebar, LiveStatusPills
 │   ├── stream/                           # SSE: StreamProvider, ToastContainer
-│   └── ui/                              # Shared: MetricCard, ModuleCard, LogEntry, StatusBadge
+│   └── ui/                               # Shared: MetricCard, ModuleCard, LogEntry, StatusBadge
 └── lib/
     ├── prisma.ts                         # Prisma client singleton
-    ├── goldApi.ts                        # Gold-API.io integration
+    ├── goldApi.ts                        # XAU spot pricing (broker → gold-api → synthetic)
+    ├── capital.ts                        # Capital.com REST client
+    ├── broker.ts                         # Broker facade (Capital-only today)
+    ├── autoTrader.ts                     # Consensus-driven auto-trader (RSI+MACD+EMA)
     ├── indicators.ts                     # RSI, MACD, EMA calculations
     ├── backtest.ts                       # Strategy runner
     ├── finance.ts                        # Finance helpers
@@ -63,7 +89,7 @@ src/
     ├── memory.ts                         # Memory log helpers
     ├── pinger.ts                         # Service health checker
     ├── policy.ts                         # Policy rule engine
-    ├── router.ts                         # AI task router
+    ├── router.ts                         # Policy + HIL action router
     ├── seed.ts                           # DB seed helpers
     └── setting.ts                        # Settings key/value store
 ```
@@ -88,8 +114,12 @@ API routes live at `src/app/api/<module>/route.ts` — always use Prisma for DB 
 | `/api/price` | GET | Live XAU/USD price |
 | `/api/price/history` | GET | OHLCV price history |
 | `/api/signals` | GET | RSI/MACD/EMA signals |
-| `/api/trades` | GET, POST | Trade journal |
+| `/api/trades` | GET, POST | Trade journal + live order placement (isLive flag) |
 | `/api/backtest` | GET, POST | Backtest runner |
+| `/api/broker/info` | GET | Active broker + readiness |
+| `/api/broker/account` | GET | Broker account summary (cached 30s) |
+| `/api/broker/trades/close` | POST | Close a live broker position |
+| `/api/autotrader` | GET, PUT | Auto-trader config + state |
 | `/api/finance/entries` | GET, POST | Income/expense entries |
 | `/api/finance/summary` | GET | Finance summary |
 | `/api/finance/budgets` | GET, POST | Budget management |
@@ -112,14 +142,16 @@ API routes live at `src/app/api/<module>/route.ts` — always use Prisma for DB 
 | `/api/tasks` | GET, POST | Human-in-loop tasks |
 | `/api/tasks/[id]` | PATCH | Approve/reject task |
 | `/api/settings` | GET, POST | App settings |
-| `/api/stream` | GET | SSE real-time stream |
+| `/api/stream` | GET | SSE real-time stream (also fires auto-trader tick) |
 | `/api/briefing` | GET | Daily briefing |
 
-## Prisma Schema (SQLite)
+## Prisma Schema (PostgreSQL)
 
-Models: `Trade`, `Memory`, `Policy`, `Task`, `Price`, `FinanceEntry`, `Budget`, `PortfolioHolding`, `Service`, `ServiceCheck`, `DeployLog`, `Setting`, `KanbanCard`, `Violation`
+Models: `Trade`, `Memory`, `Policy`, `Task`, `Price`, `FinanceEntry`, `Budget`, `PortfolioHolding`, `Service`, `ServiceCheck`, `DeployLog`, `Setting`, `KanbanCard`, `Violation`, `BrokerSnapshot`
 
-Database file: `prisma/9cj.db` (set via `DATABASE_URL` in `.env`)
+Database URL set via `DATABASE_URL` in `.env` (PostgreSQL via Docker). `BrokerSnapshot` uses `@map("OandaSnapshot")` so the underlying Postgres table keeps its original name — historical snapshots are preserved.
+
+`Trade.brokerOrderId` and `Trade.brokerDealId` are TypeScript-level names; the underlying Postgres columns remain `oandaOrderId`/`oandaTradeId` via Prisma `@map`. Historical rows are intact.
 
 ## Design System
 
@@ -132,7 +164,7 @@ Accents:
   Green:  #68D391  (positive / BUY signals)
   Amber:  #F6AD55  (warnings / NEUTRAL)
   Red:    #FC8181  (danger / SELL signals / violations)
-  Purple: #B794F4  (AI / agents)
+  Purple: #B794F4  (AI / agents / auto-trader)
 ```
 
 ### Typography
@@ -147,50 +179,65 @@ Accents:
 
 ## Shell Layout
 
-- **Topbar** — sticky, logo left, 3 status pills right: `AGENTS LIVE`, `XAU DESK`, `BACKTEST`
+- **Topbar** — sticky, logo left, live status pills right (LIVE / XAU / approvals count) driven by `useStream()`
 - **Sidebar** — 200px fixed, grouped nav: Overview / Trading / Operations / System
 - **Main** — scrollable content area rendering active module
 
 ## Real-time (SSE)
 
-`StreamProvider` wraps the app and listens to `/api/stream`. Events emitted:
+`StreamProvider` wraps the app and listens to `/api/stream`. Events emitted by `/api/stream/route.ts`:
 
 ```typescript
-{ type: 'price', value: number }
-{ type: 'log', entry: LogEntry }
-{ type: 'signal', signals: SignalData }
+{ type: 'tick', time: number }
+{ type: 'price', value: number, delta: number, source: string }
+{ type: 'memory', entry: { id, agent, tag, message, createdAt } }
+{ type: 'alert', severity: 'HIGH'|'MEDIUM'|'LOW', title, message, module }
+{ type: 'metrics', servicesHealthy, servicesTotal, approvalsPending, pricePerf }
 ```
+
+The pulse runs every 5s and also drives `autoTrader.tick()` so the bot acts on the same cadence the UI updates.
 
 ## Environment Variables
 
 ```env
-DATABASE_URL="file:./prisma/9cj.db"
-GOLD_API_KEY=...          # Gold-API.io key
-HOME_ASSISTANT_URL=...    # Local HA instance
-HOME_ASSISTANT_TOKEN=...  # HA long-lived token
-TZ=Asia/Bangkok           # Bangkok timezone
+DATABASE_URL="postgresql://9cj:9cj_secret@localhost:5432/9cj_db"
+TZ=Asia/Bangkok
+
+BROKER=capital                  # capital | none (auto-detect if unset)
+GOLD_API_KEY=...                # gold-api.io (fallback price source)
+CAPITAL_API_KEY=...             # Capital.com API key
+CAPITAL_EMAIL=...               # Capital.com login email
+CAPITAL_API_PASSWORD=...        # Capital.com custom API password (NOT login password)
+CAPITAL_ENV=demo                # demo | live
+
+HOME_ASSISTANT_URL=...          # optional
+HOME_ASSISTANT_TOKEN=...        # optional
 ```
 
 ## Key Conventions
 
-- All monetary amounts default to **THB (฿)**
-- Timestamps use **Asia/Bangkok** timezone
-- Use `Prisma` singleton from `src/lib/prisma.ts` — never import `PrismaClient` directly
-- API routes return `NextResponse.json(data)` — always handle errors with `{ error: message }`
-- Client components must start with `"use client"` — keep page.tsx files as server components
+- All monetary amounts default to **THB (฿)** in finance; trades are USD per Capital.com.
+- Timestamps stored UTC, displayed in **Asia/Bangkok** timezone.
+- Use `prisma` singleton from `src/lib/prisma.ts` — never import `PrismaClient` directly.
+- API routes return `NextResponse.json(data)` — always handle errors with `{ error: message }`.
+- Client components must start with `"use client"` — keep `page.tsx` files as server components.
 - Signal values: `BUY` | `SELL` | `NEUTRAL`
 - Trade direction: `LONG` | `SHORT`
 - Task status: `PENDING` | `APPROVED` | `REJECTED` | `DONE`
 - Finance type: `INCOME` | `EXPENSE`
 - Kanban status: `BACKLOG` | `IN_PROGRESS` | `REVIEW` | `DONE`
+- Memory tags: `TRADE` | `POLICY` | `AI` | `SYS` | `OK` | `WARN` | `ERR`
+- **Live trades go through `routeAction()` from `src/lib/router.ts`** so `MAX_TRADE_SIZE` / `DAILY_LOSS` policies + HIL approvals always apply — including auto-trader orders.
+- **Auto-trader** runs server-side on the SSE pulse (every 5s); config + state live in the `Setting` table under `autotrader.*` keys. Never call `placeOrder()` directly from `tick()` — always go through `routeAction()`.
 
 ## 11 Modules Summary
 
 | Module | Route | Status |
 |--------|-------|--------|
 | Dashboard | `/` | Live |
+| Daily Briefing | `/briefing` | Live |
 | AI Agents | `/agents` | Live |
-| Quant XAU Desk | `/xau` | Live |
+| Quant XAU Desk | `/xau` | Live · Capital.com live trading + consensus auto-trader |
 | Backtest Lab | `/backtest` | Live |
 | Finance / P&L | `/finance` | Live |
 | Smart Home Ops | `/home-ops` | Live |
@@ -200,4 +247,3 @@ TZ=Asia/Bangkok           # Bangkok timezone
 | Policy Governance | `/policy` | Live |
 | Human-in-Loop | `/approvals` | Live |
 | Settings | `/settings` | Live |
-| Daily Briefing | `/briefing` | Live |

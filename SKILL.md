@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Review new or modified code in the **9CJ Corp Personal AI Operating System** project against its established conventions. This skill checks correctness, consistency, security, and maintainability — specifically for this Next.js 14 / Prisma / SQLite / Tailwind stack.
+Review new or modified code in the **9CJ Corp Personal AI Operating System** project against its established conventions. This skill checks correctness, consistency, security, and maintainability — specifically for this Next.js 14 / Prisma / PostgreSQL / Tailwind / Capital.com stack.
 
 ---
 
@@ -33,17 +33,18 @@ When reviewing code, go through each section below and report findings.
 - [ ] Routes live at `src/app/api/<resource>/route.ts`
 - [ ] Dynamic segments use `src/app/api/<resource>/[id]/route.ts`
 - [ ] All responses use `NextResponse.json(data)` — no raw `Response.json()`
-- [ ] Errors return `{ error: string }` with an appropriate HTTP status code (400, 404, 500)
+- [ ] Errors return `{ error: string }` with an appropriate HTTP status code (400, 404, 500, 502 for broker, 503 for unconfigured broker)
 - [ ] No direct `PrismaClient` instantiation — always import from `src/lib/prisma.ts`
-- [ ] GET routes are read-only; mutations use POST / PATCH / DELETE appropriately
+- [ ] GET routes are read-only; mutations use POST / PATCH / PUT / DELETE appropriately
 
 ### 3. Database / Prisma
 
-- [ ] Prisma is imported via the singleton: `import prisma from '@/lib/prisma'`
+- [ ] Prisma is imported via the singleton: `import { prisma } from '@/lib/prisma'`
 - [ ] Queries use `try/catch` and return proper error responses
 - [ ] New models match the existing naming conventions (PascalCase models, camelCase fields)
 - [ ] No raw SQL unless absolutely necessary — use Prisma query API
-- [ ] Migrations / schema changes run with `npx prisma db push`
+- [ ] Migrations run with `npx prisma migrate dev --name <change>`. After schema edits, **existing Postgres data must be preserved** — prefer column renames (Prisma `@map`) over drop/add when renaming.
+- [ ] JSON columns use `Json?` (native Postgres) — no `JSON.stringify()` before `prisma.create`
 
 ### 4. TypeScript
 
@@ -70,7 +71,7 @@ When reviewing code, go through each section below and report findings.
 - [ ] Task status: `PENDING` | `APPROVED` | `REJECTED` | `DONE`
 - [ ] Kanban status: `BACKLOG` | `IN_PROGRESS` | `REVIEW` | `DONE`
 - [ ] Finance type: `INCOME` | `EXPENSE`
-- [ ] Memory tags: `TRADE` | `POLICY` | `AI` | `SYS` | `OK`
+- [ ] Memory tags: `TRADE` | `POLICY` | `AI` | `SYS` | `OK` | `WARN` | `ERR`
 
 ### 7. Real-time / SSE
 
@@ -78,21 +79,26 @@ When reviewing code, go through each section below and report findings.
   `{ type: string, ...payload }`
 - [ ] Client-side subscription uses `EventSource` inside `StreamProvider` — not a new listener
 - [ ] No polling loops where SSE events already cover the update
+- [ ] New per-pulse work added to `pulse()` is wrapped in `try/catch` — must not crash the stream
 
 ### 8. Security & Safety
 
 - [ ] No secrets hardcoded in source — API keys from `.env` only
-- [ ] Policy checks called before any trade or spend action (use `src/lib/policy.ts`)
+- [ ] `CAPITAL_API_PASSWORD` (and any broker secret) never logged or returned to the client
+- [ ] Policy checks called before any trade or spend action (use `routeAction()` from `src/lib/router.ts`)
+- [ ] Live broker calls (Capital.com) wrapped in `try/catch`; return 502 for broker failure, 503 for `BrokerUnavailableError`
+- [ ] Auto-trader actions always pass through `routeAction()` — **no direct `placeOrder()` from `autoTrader.tick()`**
 - [ ] Human-in-loop tasks created for high-risk actions (size > threshold → queue approval)
-- [ ] Memory log entry written for significant agent actions (use `src/lib/memory.ts`)
+- [ ] Memory log entry written for significant agent actions (use `recordMemory()` from `src/lib/memory.ts`)
 - [ ] No `dangerouslySetInnerHTML` unless the input is sanitized
 
 ### 9. Performance
 
-- [ ] Gold API calls cached in SQLite — no duplicate external requests per page load
+- [ ] Spot price calls cached via the SSE pulse — no per-page-load external fetch
 - [ ] Prisma queries select only needed fields (use `select: {}` for large tables)
-- [ ] Price history queries bounded by date range — no unbounded `findMany()`
-- [ ] Backtest runs are isolated to `src/lib/backtest.ts` — not inline in API routes
+- [ ] Price history queries bounded by date range or `take:` — no unbounded `findMany()`
+- [ ] Backtest runs isolated to `src/lib/backtest.ts` — not inline in API routes
+- [ ] Auto-trader `tick()` short-circuits on `!enabled` and on cooldown before any DB query that's not needed
 
 ---
 
@@ -124,11 +130,18 @@ Report findings as:
 |------|------|
 | Prisma client | `src/lib/prisma.ts` |
 | Policy engine | `src/lib/policy.ts` |
+| Action router (policy + HIL) | `src/lib/router.ts` |
 | Memory logger | `src/lib/memory.ts` |
-| Gold API | `src/lib/goldApi.ts` |
-| Indicators | `src/lib/indicators.ts` |
+| Gold / spot pricing | `src/lib/goldApi.ts` |
+| Indicators (RSI/MACD/EMA) | `src/lib/indicators.ts` |
+| Broker facade | `src/lib/broker.ts` |
+| Capital.com client | `src/lib/capital.ts` |
+| Auto-trader | `src/lib/autoTrader.ts` |
+| Settings (key/value) | `src/lib/setting.ts` |
 | Reusable UI | `src/components/ui/` |
 | Shell layout | `src/components/shell/` |
-| SSE stream | `src/components/stream/StreamProvider.tsx` |
+| SSE provider | `src/components/stream/StreamProvider.tsx` |
 | Prisma schema | `prisma/schema.prisma` |
 | Env config | `.env` |
+| Broker docs | `docs/BROKERS.md` |
+| Optional integrations | `docs/OPTIONAL_INTEGRATIONS.md` |
