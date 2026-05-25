@@ -9,6 +9,7 @@ export type BrokerName = "capital" | "none";
 
 export type BrokerAccount = {
   accountId: string;
+  name: string;
   balance: number;
   currency: string;
   unrealizedPL: number;
@@ -140,4 +141,9 @@ export async function closeTrade(tradeId: string, units?: number): Promise<{ clo
 export async function getOpenTrades(instrument?: string): Promise<BrokerTrade[]> {
   ensureConfigured();
   return capital.getOpenTrades(instrument);
+}
+
+export async function getMarketInfo(instrument: string) {
+  ensureConfigured();
+  return capital.getMarketInfo(instrument);
 }

@@ -19,7 +19,7 @@ export async function PUT(req: NextRequest) {
 
   const patch: Partial<Config> = {};
   if (typeof body.enabled === "boolean") patch.enabled = body.enabled;
-  if (body.strategy === "CONSENSUS") patch.strategy = body.strategy;
+  if (body.strategy === "CONSENSUS" || body.strategy === "MAJORITY_2OF3") patch.strategy = body.strategy;
   if (typeof body.size === "number" && body.size > 0) patch.size = body.size;
   if (body.stopLossPct === null || (typeof body.stopLossPct === "number" && body.stopLossPct >= 0)) {
     patch.stopLossPct = body.stopLossPct;

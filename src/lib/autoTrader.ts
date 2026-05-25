@@ -16,10 +16,16 @@ import { computeAll } from "./indicators";
 import { routeAction } from "./router";
 import { recordMemory } from "./memory";
 import { placeOrder, closeTrade, currentBroker, BrokerUnavailableError } from "./broker";
+import { CapitalPositionNotFoundError } from "./capital";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-export type Strategy = "CONSENSUS";
+export type Strategy = "CONSENSUS" | "MAJORITY_2OF3";
+
+export const STRATEGIES: { id: Strategy; label: string; desc: string }[] = [
+  { id: "CONSENSUS",     label: "Consensus (3/3)",  desc: "All RSI + MACD + EMA must agree. Strict; few trades/day." },
+  { id: "MAJORITY_2OF3", label: "Majority (2/3)",   desc: "Any 2 of 3 agree (no opposing 3rd). Moderate; more trades." },
+];
 
 export type Config = {
   enabled: boolean;
@@ -119,24 +125,48 @@ async function setState(patch: Partial<State>): Promise<void> {
 
 // ── Decision logic ───────────────────────────────────────────────────────────
 
-function deriveConsensus(rsi: string, macd: string, ema: string): "BUY" | "SELL" | "NEUTRAL" {
-  if (rsi === "BUY" && macd === "BUY" && ema === "BUY") return "BUY";
-  if (rsi === "SELL" && macd === "SELL" && ema === "SELL") return "SELL";
+export function deriveSignal(
+  strategy: Strategy,
+  rsi: string,
+  macd: string,
+  ema: string
+): "BUY" | "SELL" | "NEUTRAL" {
+  if (strategy === "CONSENSUS") {
+    if (rsi === "BUY" && macd === "BUY" && ema === "BUY") return "BUY";
+    if (rsi === "SELL" && macd === "SELL" && ema === "SELL") return "SELL";
+    return "NEUTRAL";
+  }
+  // MAJORITY_2OF3 — count votes per side; need at least 2 BUY and 0 SELL (or vice versa)
+  const votes = [rsi, macd, ema];
+  const buys = votes.filter((v) => v === "BUY").length;
+  const sells = votes.filter((v) => v === "SELL").length;
+  if (buys >= 2 && sells === 0) return "BUY";
+  if (sells >= 2 && buys === 0) return "SELL";
   return "NEUTRAL";
 }
 
+// SL/TP math — direction-aware. SHORT looks counter-intuitive but is correct:
+// SHORT profits when price drops, so TP must sit BELOW entry; SL ABOVE entry.
+// Quick reference:
+//
+//   Direction | Profit when    | SL (loss side)         | TP (profit side)
+//   ----------+----------------+------------------------+------------------------
+//   LONG      | price ↑         | entry × (1 − slPct/100) | entry × (1 + tpPct/100)
+//   SHORT     | price ↓         | entry × (1 + slPct/100) | entry × (1 − tpPct/100)
+//
+// In both cases SL and TP sit on opposite sides of entry by design.
 function computeSL(entry: number, direction: "LONG" | "SHORT", pct: number | null): number | undefined {
   if (pct === null || pct <= 0) return undefined;
   return direction === "LONG"
-    ? Number((entry * (1 - pct / 100)).toFixed(2))
-    : Number((entry * (1 + pct / 100)).toFixed(2));
+    ? Number((entry * (1 - pct / 100)).toFixed(2))   // LONG SL = below entry (cuts loss)
+    : Number((entry * (1 + pct / 100)).toFixed(2));  // SHORT SL = above entry (cuts loss)
 }
 
 function computeTP(entry: number, direction: "LONG" | "SHORT", pct: number | null): number | undefined {
   if (pct === null || pct <= 0) return undefined;
   return direction === "LONG"
-    ? Number((entry * (1 + pct / 100)).toFixed(2))
-    : Number((entry * (1 - pct / 100)).toFixed(2));
+    ? Number((entry * (1 + pct / 100)).toFixed(2))   // LONG TP = above entry (locks profit)
+    : Number((entry * (1 - pct / 100)).toFixed(2));  // SHORT TP = below entry (locks profit)
 }
 
 // Open a live position via routeAction → placeOrder.
@@ -206,7 +236,30 @@ async function closeLivePosition(tradeId: number): Promise<{ closePrice: number;
   const trade = await prisma.trade.findUnique({ where: { id: tradeId } });
   if (!trade || !trade.brokerDealId) throw new Error(`trade ${tradeId} not closeable`);
 
-  const result = await closeTrade(trade.brokerDealId);
+  let result: { closePrice: number; realizedPL: number };
+  try {
+    result = await closeTrade(trade.brokerDealId);
+  } catch (e) {
+    if (e instanceof CapitalPositionNotFoundError) {
+      // Broker has nothing matching — clear local state so flip can proceed
+      await prisma.trade.update({
+        where: { id: tradeId },
+        data: {
+          status: "CLOSED",
+          exit: trade.exit ?? trade.entry,
+          notes: (trade.notes ?? "") + " · closed locally (broker had no matching position)",
+        },
+      });
+      await recordMemory(
+        "autotrader",
+        "WARN",
+        `closed locally · ${trade.direction} ${trade.size} · ${e.message}`,
+        { tradeId, reason: e.message }
+      );
+      return { closePrice: trade.entry, pnl: 0 };
+    }
+    throw e;
+  }
   const pnl = Number(result.realizedPL.toFixed(2));
 
   await prisma.trade.update({
@@ -261,11 +314,11 @@ export async function tick(): Promise<TickResult> {
   const closes = rows.map((r) => r.close).reverse();
   const signals = computeAll(closes);
 
-  const consensus = deriveConsensus(signals.rsi.signal, signals.macd.trend, signals.ema.signal);
+  const consensus = deriveSignal(config.strategy, signals.rsi.signal, signals.macd.trend, signals.ema.signal);
 
-  // No consensus → nothing to do (but remember the decision for the UI)
+  // No actionable signal → nothing to do (but remember the decision for the UI)
   if (consensus === "NEUTRAL") {
-    const detail = `no consensus · rsi=${signals.rsi.signal} macd=${signals.macd.trend} ema=${signals.ema.signal}`;
+    const detail = `no ${config.strategy.toLowerCase()} signal · rsi=${signals.rsi.signal} macd=${signals.macd.trend} ema=${signals.ema.signal}`;
     await setState({ lastDecision: detail });
     return { action: "HOLD", detail, consensus };
   }
@@ -325,4 +378,197 @@ export async function tick(): Promise<TickResult> {
     await setState({ lastDecision: detail });
     return { action: "ERROR", detail, consensus };
   }
+}
+
+// ── Manual trigger — bypasses signal + cooldown, still respects policy ──────
+// Used by the "Trade now" button. Lets the user verify the full pipeline in
+// one click without waiting for a signal to fire.
+
+export async function triggerManual(direction: "LONG" | "SHORT"): Promise<TickResult> {
+  const config = await getConfig();
+  const broker = currentBroker();
+  if (!broker.configured) {
+    return { action: "ERROR", detail: `broker not configured: ${broker.envHint ?? "n/a"}` };
+  }
+
+  const state = await getState();
+
+  // Resolve current open auto-trade
+  let openTrade: { id: number; direction: string; status: string } | null = null;
+  if (state.openTradeId) {
+    openTrade = await prisma.trade.findUnique({
+      where: { id: state.openTradeId },
+      select: { id: true, direction: true, status: true },
+    });
+    if (!openTrade || openTrade.status !== "OPEN") {
+      openTrade = null;
+      await setState({ openTradeId: null, lastDirection: null });
+    }
+  }
+
+  try {
+    // Already in the requested direction — refuse to stack
+    if (openTrade && openTrade.direction === direction) {
+      const detail = `manual trigger ignored · already holding ${direction}`;
+      await setState({ lastDecision: detail });
+      return { action: "HOLD", detail };
+    }
+
+    // Opposite direction open → flip
+    if (openTrade && openTrade.direction !== direction) {
+      const closed = await closeLivePosition(openTrade.id);
+      const opened = await openLivePosition(direction, config.size, config);
+      const detail = `manual flip · closed ${openTrade.direction} @ ${closed.closePrice} (PnL ${closed.pnl >= 0 ? "+" : ""}${closed.pnl}) → ${opened.detail}`;
+      await setState({
+        lastActionAt: new Date().toISOString(),
+        openTradeId: opened.tradeId,
+        lastDirection: opened.tradeId ? direction : null,
+        lastDecision: detail,
+      });
+      await recordMemory("autotrader", "AI", `manual trigger · flip → ${direction}`, { direction, size: config.size });
+      return { action: opened.queued ? "QUEUED" : "FLIP", detail };
+    }
+
+    // No open → just open new
+    const opened = await openLivePosition(direction, config.size, config);
+    const detail = `manual trigger · ${opened.detail}`;
+    await setState({
+      lastActionAt: new Date().toISOString(),
+      openTradeId: opened.tradeId,
+      lastDirection: opened.tradeId ? direction : state.lastDirection,
+      lastDecision: detail,
+    });
+    await recordMemory("autotrader", "AI", `manual trigger · open ${direction}`, { direction, size: config.size });
+    return { action: opened.queued ? "QUEUED" : "OPEN", detail };
+  } catch (e) {
+    const reason = e instanceof BrokerUnavailableError ? e.message : (e as Error).message;
+    const detail = `manual trigger error: ${reason}`;
+    await recordMemory("autotrader", "ERR", detail, { direction, error: reason });
+    await setState({ lastDecision: detail });
+    return { action: "ERROR", detail };
+  }
+}
+
+// ── Read-only preview — what would tick() do RIGHT NOW? ─────────────────────
+// Used by the Bot Brain panel. Mirrors tick() decision tree but has zero
+// side effects (no setState, no recordMemory, no broker calls, no Trade rows).
+
+export type AutotraderStatus = {
+  config: Config;
+  state: State;
+  cooldownRemaining: number;          // seconds; 0 if not in cooldown
+  candleCount: number;
+  signals: {
+    rsi: { value: number | null; signal: "BUY" | "SELL" | "NEUTRAL"; period: number };
+    macd: { macd: number | null; signal: number | null; histogram: number | null; trend: "BUY" | "SELL" | "NEUTRAL" };
+    ema: { ema50: number | null; ema200: number | null; signal: "BUY" | "SELL" | "NEUTRAL" };
+  } | null;
+  votes: { buy: number; sell: number; neutral: number };
+  verdict: "BUY" | "SELL" | "NEUTRAL";
+  verdictReason: string;
+  openTradeId: number | null;
+  openTradeDirection: "LONG" | "SHORT" | null;
+  nextAction: {
+    action: TickResult["action"];
+    detail: string;
+  };
+  asOf: string;
+};
+
+export async function previewTick(): Promise<AutotraderStatus> {
+  const config = await getConfig();
+  const state = await getState();
+  const now = Date.now();
+
+  // Cooldown remaining
+  let cooldownRemaining = 0;
+  if (state.lastActionAt) {
+    const elapsed = (now - new Date(state.lastActionAt).getTime()) / 1000;
+    cooldownRemaining = Math.max(0, Math.ceil(config.cooldownSec - elapsed));
+  }
+
+  // Pull candles
+  const rows = await prisma.price.findMany({
+    orderBy: { timestamp: "desc" },
+    take: 250,
+  });
+  const candleCount = rows.length;
+
+  // Default empty-state response
+  let signals: AutotraderStatus["signals"] = null;
+  let verdict: "BUY" | "SELL" | "NEUTRAL" = "NEUTRAL";
+  let votes = { buy: 0, sell: 0, neutral: 0 };
+  let verdictReason = "no signals";
+
+  if (candleCount >= 50) {
+    const closes = rows.map((r) => r.close).reverse();
+    const bundle = computeAll(closes);
+    signals = {
+      rsi: bundle.rsi,
+      macd: bundle.macd,
+      ema: bundle.ema,
+    };
+    const votesArr = [bundle.rsi.signal, bundle.macd.trend, bundle.ema.signal];
+    votes = {
+      buy: votesArr.filter((v) => v === "BUY").length,
+      sell: votesArr.filter((v) => v === "SELL").length,
+      neutral: votesArr.filter((v) => v === "NEUTRAL").length,
+    };
+    verdict = deriveSignal(config.strategy, bundle.rsi.signal, bundle.macd.trend, bundle.ema.signal);
+    if (config.strategy === "CONSENSUS") {
+      verdictReason = verdict !== "NEUTRAL"
+        ? `3/3 ${verdict} (CONSENSUS satisfied)`
+        : `${votes.buy} BUY / ${votes.sell} SELL / ${votes.neutral} NEUTRAL — CONSENSUS needs 3/3 same`;
+    } else {
+      verdictReason = verdict !== "NEUTRAL"
+        ? `${verdict === "BUY" ? votes.buy : votes.sell}/3 ${verdict} (MAJORITY 2/3 satisfied · no opposing)`
+        : `${votes.buy} BUY / ${votes.sell} SELL / ${votes.neutral} NEUTRAL — MAJORITY needs ≥2 same with 0 opposing`;
+    }
+  }
+
+  // Resolve open trade (only autotrader's own)
+  let openTradeDirection: "LONG" | "SHORT" | null = null;
+  if (state.openTradeId) {
+    const t = await prisma.trade.findUnique({
+      where: { id: state.openTradeId },
+      select: { direction: true, status: true },
+    });
+    if (t?.status === "OPEN") openTradeDirection = t.direction as "LONG" | "SHORT";
+  }
+
+  // Compute next action — same branches as tick() but no side effects
+  let nextAction: AutotraderStatus["nextAction"];
+  if (!config.enabled) {
+    nextAction = { action: "NONE", detail: "disabled" };
+  } else if (candleCount < 50) {
+    nextAction = { action: "HOLD", detail: `not enough candles (${candleCount}/50)` };
+  } else if (cooldownRemaining > 0) {
+    nextAction = { action: "HOLD", detail: `cooldown · ${cooldownRemaining}s left` };
+  } else if (verdict === "NEUTRAL") {
+    nextAction = { action: "HOLD", detail: verdictReason };
+  } else {
+    const wantDir: "LONG" | "SHORT" = verdict === "BUY" ? "LONG" : "SHORT";
+    if (!openTradeDirection) {
+      nextAction = { action: "OPEN", detail: `would OPEN ${wantDir} · size ${config.size}` };
+    } else if (openTradeDirection === wantDir) {
+      nextAction = { action: "HOLD", detail: `matches open ${wantDir} · would hold` };
+    } else {
+      nextAction = { action: "FLIP", detail: `would FLIP ${openTradeDirection}→${wantDir} · size ${config.size}` };
+    }
+  }
+
+  return {
+    config,
+    state,
+    cooldownRemaining,
+    candleCount,
+    signals,
+    votes,
+    verdict,
+    verdictReason,
+    openTradeId: state.openTradeId,
+    openTradeDirection,
+    nextAction,
+    asOf: new Date().toISOString(),
+  };
 }

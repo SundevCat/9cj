@@ -52,11 +52,14 @@ async function fetchFromGoldApi(timeoutMs: number): Promise<Spot> {
 
 // ── Synthetic fallback ────────────────────────────────────────────────────────
 
-let synthLast = 3320 + Math.random() * 40;
+// Initial synthetic anchor — only used if BOTH Capital AND gold-api fail on
+// the very first call. Subsequent ticks re-anchor on whatever real source
+// last succeeded, so this default rarely matters.
+let synthLast = 4500 + (Math.random() - 0.5) * 100;
 
 function syntheticTick(): number {
   const drift = (Math.random() - 0.5) * 1.5;
-  synthLast = Math.max(1500, Math.min(5000, synthLast + drift));
+  synthLast = Math.max(500, Math.min(10_000, synthLast + drift));
   return Number(synthLast.toFixed(2));
 }
 

@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { closeTrade, currentBroker, BrokerUnavailableError } from "@/lib/broker";
+import { CapitalPositionNotFoundError } from "@/lib/capital";
 import { recordMemory } from "@/lib/memory";
 
 export const dynamic = "force-dynamic";
 
 // POST /api/broker/trades/close
-// Body: { tradeId: number }  — local Trade.id (must be a live broker trade with oandaTradeId set)
+// Body: { tradeId: number }  — local Trade.id (must be a live broker trade)
 export async function POST(req: NextRequest) {
   let body: { tradeId?: number };
   try {
@@ -57,6 +58,29 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ trade: updated, closePrice: result.closePrice, pnl, broker: broker.name });
   } catch (e) {
+    // Escape hatch: the broker has no matching open position (closed externally,
+    // SL/TP hit, dealId mismatch with no fallback, etc). Mark local row CLOSED
+    // so the UI isn't stuck showing a phantom open trade.
+    if (e instanceof CapitalPositionNotFoundError) {
+      const updated = await prisma.trade.update({
+        where: { id: trade.id },
+        data: {
+          status: "CLOSED",
+          exit: trade.exit ?? trade.entry,
+          notes: (trade.notes ?? "") + " · marked closed locally (broker had no matching position)",
+        },
+      });
+      await recordMemory(
+        `${broker.name}.live`,
+        "WARN",
+        `marked CLOSED locally · ${trade.direction} ${trade.size}oz XAU_USD · ${e.message}`,
+        { tradeId: trade.id, broker: broker.name, brokerDealId: trade.brokerDealId, reason: e.message }
+      );
+      return NextResponse.json(
+        { trade: updated, note: "marked closed locally", reason: e.message, broker: broker.name },
+        { status: 200 }
+      );
+    }
     const status = e instanceof BrokerUnavailableError ? 503 : 502;
     return NextResponse.json({ error: (e as Error).message }, { status });
   }

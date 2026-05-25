@@ -87,7 +87,11 @@ When reviewing code, go through each section below and report findings.
 - [ ] `CAPITAL_API_PASSWORD` (and any broker secret) never logged or returned to the client
 - [ ] Policy checks called before any trade or spend action (use `routeAction()` from `src/lib/router.ts`)
 - [ ] Live broker calls (Capital.com) wrapped in `try/catch`; return 502 for broker failure, 503 for `BrokerUnavailableError`
-- [ ] Auto-trader actions always pass through `routeAction()` — **no direct `placeOrder()` from `autoTrader.tick()`**
+- [ ] Auto-trader actions always pass through `routeAction()` — **no direct `placeOrder()` from `autoTrader.tick()` or `triggerManual()`**
+- [ ] Manual "↯ Trade now" (`triggerManual()`) bypasses signal + cooldown but still respects policy
+- [ ] When closing a Capital position by `dealId`, handle `Capital 404: error.not-found.dealId` — fall back to `getOpenTrades(instrument)` lookup, then to local-only CLOSED state via `CapitalPositionNotFoundError`
+- [ ] When storing `brokerDealId` after `placeOrder`, use `confirm.affectedDeals[0].dealId`, NOT the top-level `confirm.dealId` (which 404s on DELETE)
+- [ ] `previewTick()` and `/api/autotrader/status` are pure reads — they MUST NOT call `setState`, `recordMemory`, broker, or write to Trade table
 - [ ] Human-in-loop tasks created for high-risk actions (size > threshold → queue approval)
 - [ ] Memory log entry written for significant agent actions (use `recordMemory()` from `src/lib/memory.ts`)
 - [ ] No `dangerouslySetInnerHTML` unless the input is sanitized
@@ -95,8 +99,13 @@ When reviewing code, go through each section below and report findings.
 ### 9. Performance
 
 - [ ] Spot price calls cached via the SSE pulse — no per-page-load external fetch
+- [ ] Capital session token cached in `globalThis` for ~9 min (Capital rate-limits POST /session ~5/min); 429 triggers a 60s cooldown
+- [ ] Capital market info (`getMarketInfo`) cached in `globalThis` for 5 min per epic
+- [ ] Brain panel polls `/api/autotrader/status` at 2s (read-only, fast); config polls `/api/autotrader` at 5s
 - [ ] Prisma queries select only needed fields (use `select: {}` for large tables)
 - [ ] Price history queries bounded by date range or `take:` — no unbounded `findMany()`
+- [ ] `/api/price/history?resolution=MINUTE` serves from local Price table; higher resolutions pass through to Capital live (no local cache)
+- [ ] Higher-timeframe candle fetches dedupe by timestamp at the API boundary (`dedupeByTimestamp`) — lightweight-charts asserts strict-ascending unique time
 - [ ] Backtest runs isolated to `src/lib/backtest.ts` — not inline in API routes
 - [ ] Auto-trader `tick()` short-circuits on `!enabled` and on cooldown before any DB query that's not needed
 
@@ -135,8 +144,8 @@ Report findings as:
 | Gold / spot pricing | `src/lib/goldApi.ts` |
 | Indicators (RSI/MACD/EMA) | `src/lib/indicators.ts` |
 | Broker facade | `src/lib/broker.ts` |
-| Capital.com client | `src/lib/capital.ts` |
-| Auto-trader | `src/lib/autoTrader.ts` |
+| Capital.com client (+ getMarketInfo, getCandles) | `src/lib/capital.ts` |
+| Auto-trader (tick + triggerManual + previewTick + deriveSignal) | `src/lib/autoTrader.ts` |
 | Settings (key/value) | `src/lib/setting.ts` |
 | Reusable UI | `src/components/ui/` |
 | Shell layout | `src/components/shell/` |
@@ -145,3 +154,23 @@ Report findings as:
 | Env config | `.env` |
 | Broker docs | `docs/BROKERS.md` |
 | Optional integrations | `docs/OPTIONAL_INTEGRATIONS.md` |
+| Thai user manual | `src/app/manual/` |
+| XAU desk UI (PriceTicker, SignalDashboard, CandlestickChart, AutoTraderPanel + Brain, TradeJournal) | `src/app/xau/_components/` |
+
+---
+
+## After-Job Ritual (mandatory)
+
+After any meaningful change run these **three** steps:
+
+1. `npm run lint` — fix all errors (warnings OK if pre-existing)
+2. `npm run build` — fix all type errors (build worker uses stricter TS than dev)
+3. **Update `CLAUDE.md` and `SKILL.md`** so the docs stay in sync with reality
+
+Step 3 is not optional. Anything worth knowing about in a future session belongs in one of these files:
+- New API route → `CLAUDE.md` API Routes table
+- New `src/lib/*.ts` file → `CLAUDE.md` Project Structure + `SKILL.md` Quick Reference
+- New Prisma model or column rename → `CLAUDE.md` Prisma Schema list
+- New env var → `CLAUDE.md` Environment Variables block
+- New rule worth following → `CLAUDE.md` Key Conventions + `SKILL.md` Section 8
+- New gotcha / type trap discovered during the build → `CLAUDE.md` "Common type traps" list

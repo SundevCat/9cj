@@ -50,6 +50,7 @@ export interface CapitalOrderResult {
 
 export interface CapitalAccount {
   accountId: string;
+  name: string;          // human-readable name from Capital (e.g. "Demo Account 1")
   balance: number;
   currency: string;
   unrealizedPL: number;
@@ -228,6 +229,7 @@ export async function getAccount(): Promise<CapitalAccount> {
 
   return {
     accountId: acct.accountId,
+    name: acct.accountName,
     balance: acct.balance.balance,
     currency: acct.currency,
     unrealizedPL,
@@ -275,7 +277,9 @@ export async function placeOrder(req: CapitalOrderRequest): Promise<CapitalOrder
       status?: string;
       reason?: string;
     }>(`/api/v1/confirms/${placed.dealReference}`);
-    dealId = confirm.dealId ?? confirm.affectedDeals?.[0]?.dealId;
+    // affectedDeals[].dealId is the persistent POSITION id we need for close/DELETE.
+    // confirm.dealId is just the order's confirmation id — Capital 404s on DELETE for it.
+    dealId = confirm.affectedDeals?.[0]?.dealId ?? confirm.dealId;
     fillPrice = confirm.level;
     status = confirm.status ?? "ACCEPTED";
     if (status !== "ACCEPTED" && status !== "OPEN") {
@@ -299,15 +303,56 @@ export async function placeOrder(req: CapitalOrderRequest): Promise<CapitalOrder
 
 // ── Close trade ───────────────────────────────────────────────────────────────
 
+export class CapitalPositionNotFoundError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CapitalPositionNotFoundError";
+  }
+}
+
+function isDealIdNotFound(e: unknown): boolean {
+  const msg = (e as Error)?.message ?? "";
+  return msg.includes("error.not-found.dealId") || /Capital 404:.*dealId/i.test(msg);
+}
+
+async function deleteByDealId(dealId: string): Promise<{ dealReference: string }> {
+  return capitalFetch<{ dealReference: string }>(
+    `/api/v1/positions/${dealId}`,
+    { method: "DELETE" }
+  );
+}
+
 export async function closeTrade(
   dealId: string,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _units?: number,
 ): Promise<{ closePrice: number; realizedPL: number }> {
-  const closed = await capitalFetch<{ dealReference: string }>(
-    `/api/v1/positions/${dealId}`,
-    { method: "DELETE" }
-  );
+  let closed: { dealReference: string };
+  try {
+    closed = await deleteByDealId(dealId);
+  } catch (e) {
+    if (!isDealIdNotFound(e)) throw e;
+
+    // Recovery: our stored dealId is wrong (typically because we stored the
+    // order-confirmation id from older code). Look up live open positions for
+    // XAU_USD and retry with the right one.
+    console.warn(`[capital] dealId ${dealId} 404; falling back to open-positions lookup`);
+    const open = await getOpenTrades("XAU_USD");
+    if (open.length === 0) {
+      throw new CapitalPositionNotFoundError(
+        "Position not found on Capital — already closed (SL/TP hit, manually closed in Capital app, or never opened)"
+      );
+    }
+    if (open.length > 1) {
+      const ids = open.map((p) => p.id).join(", ");
+      throw new CapitalPositionNotFoundError(
+        `dealId mismatch and ${open.length} open positions exist (${ids}) — refuse to guess. Close them manually in the Capital app.`
+      );
+    }
+    const realDealId = open[0].id;
+    console.warn(`[capital] retrying close with real dealId ${realDealId}`);
+    closed = await deleteByDealId(realDealId);
+  }
 
   let closePrice = 0;
   let realizedPL = 0;
@@ -364,6 +409,56 @@ export async function getOpenTrades(instrument?: string): Promise<CapitalTrade[]
 
 // ── Price ────────────────────────────────────────────────────────────────────
 
+// ── Market info (margin factor, lot size, etc.) ─────────────────────────────
+// Cached in globalThis for ~5 min to avoid spamming Capital's /markets endpoint.
+
+export type CapitalMarketInfo = {
+  epic: string;
+  instrumentName: string;
+  marginFactor: number;
+  marginFactorUnit: "PERCENTAGE" | "MONETARY";
+  lotSize: number;
+  currency: string;
+};
+
+type MarketCacheEntry = { value: CapitalMarketInfo; expiresAt: number };
+const mkg = globalThis as unknown as { __capitalMarketCache?: Map<string, MarketCacheEntry> };
+mkg.__capitalMarketCache ??= new Map();
+
+export async function getMarketInfo(instrument: string): Promise<CapitalMarketInfo> {
+  const epic = toEpic(instrument);
+  const cached = mkg.__capitalMarketCache!.get(epic);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+
+  const data = await capitalFetch<{
+    instrument?: {
+      epic?: string;
+      name?: string;
+      marginFactor?: number;
+      marginFactorUnit?: "PERCENTAGE" | "MONETARY";
+      lotSize?: number;
+      currencies?: Array<{ code: string }>;
+    };
+    snapshot?: { bid?: number; offer?: number };
+  }>(`/api/v1/markets/${epic}`);
+
+  const i = data.instrument ?? {};
+  const value: CapitalMarketInfo = {
+    epic: i.epic ?? epic,
+    instrumentName: i.name ?? epic,
+    marginFactor: Number(i.marginFactor ?? 5),
+    marginFactorUnit: (i.marginFactorUnit ?? "PERCENTAGE") as "PERCENTAGE" | "MONETARY",
+    lotSize: Number(i.lotSize ?? 1),
+    currency: i.currencies?.[0]?.code ?? "USD",
+  };
+
+  mkg.__capitalMarketCache!.set(epic, {
+    value,
+    expiresAt: Date.now() + 5 * 60_000,
+  });
+  return value;
+}
+
 export async function getCurrentPrice(
   instrument: string
 ): Promise<{ bid: number; ask: number; mid: number }> {
@@ -374,6 +469,75 @@ export async function getCurrentPrice(
   if (!data.snapshot) throw new Error(`No snapshot for ${epic}`);
   const { bid, offer } = data.snapshot;
   return { bid, ask: offer, mid: (bid + offer) / 2 };
+}
+
+// ── Historical candles ───────────────────────────────────────────────────────
+// Returns real OHLCV bars from Capital.com. Resolution: MINUTE | MINUTE_5 |
+// MINUTE_15 | MINUTE_30 | HOUR | HOUR_4 | DAY | WEEK. Max 1000 per call.
+
+export type CapitalResolution =
+  | "MINUTE"
+  | "MINUTE_5"
+  | "MINUTE_15"
+  | "MINUTE_30"
+  | "HOUR"
+  | "HOUR_4"
+  | "DAY"
+  | "WEEK";
+
+export type CapitalCandle = {
+  timestamp: number;       // unix ms
+  open: number;            // mid (bid+ask)/2
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+};
+
+export async function getCandles(
+  instrument: string,
+  resolution: CapitalResolution = "MINUTE",
+  max: number = 200
+): Promise<CapitalCandle[]> {
+  const epic = toEpic(instrument);
+  const data = await capitalFetch<{
+    prices?: Array<{
+      snapshotTime: string;
+      snapshotTimeUTC?: string;
+      openPrice: { bid: number; ask: number };
+      closePrice: { bid: number; ask: number };
+      highPrice: { bid: number; ask: number };
+      lowPrice: { bid: number; ask: number };
+      lastTradedVolume?: number;
+    }>;
+  }>(`/api/v1/prices/${epic}?resolution=${resolution}&max=${Math.min(1000, max)}`);
+
+  const prices = data.prices ?? [];
+  const parseUtc = (s: string): number => {
+    // Capital sometimes returns "2026-05-22T10:35:00" without a trailing Z;
+    // Date.parse treats that as local time. Force UTC by appending Z if absent.
+    const fixed = /[zZ]|[+-]\d\d:?\d\d$/.test(s) ? s : s + "Z";
+    return Date.parse(fixed);
+  };
+  const mid = (b: number, a: number) => Number(((b + a) / 2).toFixed(2));
+
+  const mapped = prices
+    .map((p) => ({
+      timestamp: parseUtc(p.snapshotTimeUTC ?? p.snapshotTime),
+      open: mid(p.openPrice.bid, p.openPrice.ask),
+      high: mid(p.highPrice.bid, p.highPrice.ask),
+      low: mid(p.lowPrice.bid, p.lowPrice.ask),
+      close: mid(p.closePrice.bid, p.closePrice.ask),
+      volume: p.lastTradedVolume ?? 0,
+    }))
+    .filter((c) => Number.isFinite(c.timestamp) && Number.isFinite(c.close))
+    .sort((a, b) => a.timestamp - b.timestamp);
+
+  // Dedupe by timestamp — Capital occasionally returns duplicate rows.
+  // Keep the last occurrence (most recent value wins).
+  const byTs = new Map<number, CapitalCandle>();
+  for (const c of mapped) byTs.set(c.timestamp, c);
+  return Array.from(byTs.values());
 }
 
 export { BASE_URL };

@@ -20,6 +20,9 @@ type Trade = {
 };
 
 type BrokerAccount = {
+  name?: string;
+  accountId?: string;
+  currency?: string;
   balance: number;
   unrealizedPL: number;
   realizedPL: number;
@@ -49,6 +52,30 @@ export function TradeJournal() {
   const [account, setAccount] = useState<BrokerAccount | null>(null);
   const [accountErr, setAccountErr] = useState<string | null>(null);
 
+  // Market info (margin factor) — fetched once, cached in broker layer
+  const [marginFactor, setMarginFactor] = useState<number | null>(null);
+  const [marginIsEst, setMarginIsEst] = useState(false);
+
+  async function loadMarketInfo() {
+    try {
+      const res = await fetch("/api/broker/market-info?instrument=XAU_USD", { cache: "no-store" });
+      if (res.ok) {
+        const j = (await res.json()) as { marginFactor?: number };
+        if (typeof j.marginFactor === "number" && j.marginFactor > 0) {
+          setMarginFactor(j.marginFactor);
+          setMarginIsEst(false);
+          return;
+        }
+      }
+      // Fallback to typical 5% estimate
+      setMarginFactor(5);
+      setMarginIsEst(true);
+    } catch {
+      setMarginFactor(5);
+      setMarginIsEst(true);
+    }
+  }
+
   async function loadTrades() {
     const res = await fetch("/api/trades", { cache: "no-store" });
     if (res.ok) {
@@ -75,6 +102,7 @@ export function TradeJournal() {
   useEffect(() => {
     loadTrades();
     loadAccount();
+    loadMarketInfo();
   }, []);
 
   function flash(msg: string) {
@@ -169,8 +197,14 @@ export function TradeJournal() {
       {/* Broker Account Panel */}
       <div className="panel p-4">
         <div className="flex items-center justify-between mb-3">
-          <div className="display text-sm font-semibold text-accent-purple">
-            Capital.com Demo Account
+          <div className="display text-sm font-semibold text-accent-purple flex items-center gap-2 flex-wrap">
+            <span>Capital.com</span>
+            {account?.name && (
+              <span className="mono text-[11px] text-ink">· {account.name}</span>
+            )}
+            {account?.accountId && (
+              <span className="mono text-[10px] text-ink-dim">· {account.accountId}</span>
+            )}
           </div>
           <button
             onClick={loadAccount}
@@ -227,6 +261,11 @@ export function TradeJournal() {
                   <th className="text-right px-3 py-2 font-normal">Entry</th>
                   <th className="text-right px-3 py-2 font-normal">Exit</th>
                   <th className="text-right px-3 py-2 font-normal">Size</th>
+                  <th className="text-right px-3 py-2 font-normal" title="+ = price above entry  ·  − = price below entry">SL</th>
+                  <th className="text-right px-3 py-2 font-normal" title="+ = price above entry  ·  − = price below entry">TP</th>
+                  <th className="text-right px-3 py-2 font-normal" title={marginIsEst ? "estimated at 5%" : "from Capital market info"}>
+                    Margin{marginIsEst ? "*" : ""}
+                  </th>
                   <th className="text-right px-3 py-2 font-normal">P&amp;L</th>
                   <th className="text-center px-3 py-2 font-normal">Status</th>
                   <th className="text-center px-3 py-2 font-normal">Action</th>
@@ -235,7 +274,7 @@ export function TradeJournal() {
               <tbody>
                 {trades.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="px-3 py-8 text-center text-ink-dim mono text-xs">
+                    <td colSpan={11} className="px-3 py-8 text-center text-ink-dim mono text-xs">
                       No trades yet — log one with the form →
                     </td>
                   </tr>
@@ -246,7 +285,23 @@ export function TradeJournal() {
                     : t.pnl >= 0 ? "text-accent-green"
                     : "text-accent-red";
                   const dirTone = t.direction === "LONG" ? "text-accent-green" : "text-accent-red";
-                  const displayEntry = (t.fillPrice ?? t.entry).toFixed(2);
+                  const entryPrice = t.fillPrice ?? t.entry;
+                  const displayEntry = entryPrice.toFixed(2);
+
+                  // Signed % from entry: + = price above entry, − = below
+                  const pctFromEntry = (level: number | null) =>
+                    level == null || entryPrice === 0 ? null : ((level - entryPrice) / entryPrice) * 100;
+                  const slPct = pctFromEntry(t.stopLoss);
+                  const tpPct = pctFromEntry(t.takeProfit);
+                  const fmtPct = (p: number | null) =>
+                    p == null ? "" : ` ${p >= 0 ? "+" : "−"}${Math.abs(p).toFixed(2)}%`;
+
+                  // Margin estimate. Capital GOLD: margin = size × entry × marginFactor/100
+                  const marginUSD =
+                    marginFactor != null
+                      ? t.size * entryPrice * (marginFactor / 100)
+                      : null;
+
                   return (
                     <tr
                       key={t.id}
@@ -264,6 +319,21 @@ export function TradeJournal() {
                       <td className="px-3 py-2 mono text-right">{displayEntry}</td>
                       <td className="px-3 py-2 mono text-right">{t.exit?.toFixed(2) ?? "—"}</td>
                       <td className="px-3 py-2 mono text-right">{t.size}</td>
+                      <td className="px-3 py-2 mono text-right text-[11px] text-accent-red">
+                        {t.stopLoss != null
+                          ? <>{t.stopLoss.toFixed(2)}<span className="text-[10px] opacity-80">{fmtPct(slPct)}</span></>
+                          : <span className="text-ink-dim">—</span>}
+                      </td>
+                      <td className="px-3 py-2 mono text-right text-[11px] text-accent-green">
+                        {t.takeProfit != null
+                          ? <>{t.takeProfit.toFixed(2)}<span className="text-[10px] opacity-80">{fmtPct(tpPct)}</span></>
+                          : <span className="text-ink-dim">—</span>}
+                      </td>
+                      <td className="px-3 py-2 mono text-right text-[11px] text-ink-muted">
+                        {marginUSD != null
+                          ? `$${marginUSD.toLocaleString("en", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                          : <span className="text-ink-dim">—</span>}
+                      </td>
                       <td className={`px-3 py-2 mono text-right ${pnlTone}`}>
                         {t.pnl === null ? "—" : `${t.pnl >= 0 ? "+" : ""}${t.pnl.toFixed(2)}`}
                       </td>

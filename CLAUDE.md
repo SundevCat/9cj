@@ -33,13 +33,27 @@ npx prisma generate       # Regenerate Prisma client
 
 ### Always run after a job
 
-After finishing any meaningful change (new module, schema edit, refactor), run
-both of these and fix anything that comes up:
+After finishing any meaningful change (new module, schema edit, refactor),
+run these **three** steps and fix anything that comes up:
 
 ```bash
-npm run lint
-npm run build
+npm run lint    # 1. ESLint
+npm run build   # 2. Production build (catches type errors dev doesn't)
+# 3. Update CLAUDE.md + SKILL.md so they reflect what changed
 ```
+
+**Step 3 is not optional.** Both docs are the durable map of the project for
+future sessions / contributors. If you added a new API route, a new lib file,
+a new model, or changed a convention — update both. Specifically:
+
+- New API route → add a row to the API Routes table
+- New lib file → add to Project Structure
+- New Prisma model → add to the Prisma Schema list
+- New env var → update the Environment Variables block
+- New cross-cutting rule → add to Key Conventions
+- New top-level page / sidebar entry → update Modules Summary
+- New safety/security rule → add to SKILL.md Section 8
+- New file worth knowing about → add to SKILL.md Quick Reference
 
 The build catches type errors `next dev` doesn't surface (the build worker
 uses stricter TS settings, e.g. it won't iterate `Map` / `Set` with `[...]`
@@ -51,6 +65,7 @@ spread — use `Array.from(...)` instead). Common type traps in this codebase:
 - Recharts `<Tooltip formatter>`: param is `ValueType | undefined`, not `number` — coerce with `Number(v)`.
 - lightweight-charts v5 `time`: cast unix-seconds to `UTCTimestamp` (`import type { UTCTimestamp } from "lightweight-charts"`).
 - Apostrophes inside JSX text need `&apos;` (e.g. `module&apos;s`).
+- Capital.com `placeOrder` → store **`affectedDeals[0].dealId`** as `brokerDealId`, NOT `confirm.dealId`. The top-level `dealId` is the order confirmation id; only `affectedDeals[].dealId` is the persistent position id that `DELETE /positions/{id}` accepts.
 
 ## Project Structure
 
@@ -117,9 +132,12 @@ API routes live at `src/app/api/<module>/route.ts` — always use Prisma for DB 
 | `/api/trades` | GET, POST | Trade journal + live order placement (isLive flag) |
 | `/api/backtest` | GET, POST | Backtest runner |
 | `/api/broker/info` | GET | Active broker + readiness |
-| `/api/broker/account` | GET | Broker account summary (cached 30s) |
-| `/api/broker/trades/close` | POST | Close a live broker position |
+| `/api/broker/account` | GET | Broker account summary (cached 30s, includes account name) |
+| `/api/broker/market-info` | GET | Capital market info (margin factor, lot size); cached 5min |
+| `/api/broker/trades/close` | POST | Close a live broker position (with 404→open-positions recovery) |
 | `/api/autotrader` | GET, PUT | Auto-trader config + state |
+| `/api/autotrader/status` | GET | Read-only dry-run: signals, votes, verdict, next action |
+| `/api/autotrader/trigger` | POST | Manual "Trade now" — bypasses signal + cooldown |
 | `/api/finance/entries` | GET, POST | Income/expense entries |
 | `/api/finance/summary` | GET | Finance summary |
 | `/api/finance/budgets` | GET, POST | Budget management |
@@ -229,15 +247,21 @@ HOME_ASSISTANT_TOKEN=...        # optional
 - Memory tags: `TRADE` | `POLICY` | `AI` | `SYS` | `OK` | `WARN` | `ERR`
 - **Live trades go through `routeAction()` from `src/lib/router.ts`** so `MAX_TRADE_SIZE` / `DAILY_LOSS` policies + HIL approvals always apply — including auto-trader orders.
 - **Auto-trader** runs server-side on the SSE pulse (every 5s); config + state live in the `Setting` table under `autotrader.*` keys. Never call `placeOrder()` directly from `tick()` — always go through `routeAction()`.
+- **Auto-trader strategies**: `CONSENSUS` (3/3) and `MAJORITY_2OF3` (2/3 with no opposing). Strategy dispatcher is `deriveSignal()` in [`src/lib/autoTrader.ts`](src/lib/autoTrader.ts) — exported so other code can reuse the same vote math.
+- **Manual `↯ Trade now`** button in the Auto-Trader panel calls `triggerManual()` — bypasses signal + cooldown but **still routes through `routeAction()`**.
+- **`previewTick()`** is the read-only sibling of `tick()` — same decision tree, zero side effects. The Brain panel polls `/api/autotrader/status` every 2s to surface "what would happen now" without firing real trades.
+- **Capital position id gotcha** — when calling `placeOrder()`, store `confirm.affectedDeals[0].dealId` as `brokerDealId`, NOT the top-level `confirm.dealId`. Only `affectedDeals[].dealId` is the persistent position id that `DELETE /positions/{id}` accepts.
+- **`closeTrade()` has a fallback** — when Capital returns `404 error.not-found.dealId`, it auto-looks-up open positions via `getOpenTrades(instrument)` and retries with the right id. If still no match, throws `CapitalPositionNotFoundError`, and `/api/broker/trades/close` marks the local Trade CLOSED so the UI doesn't get stuck.
 
-## 11 Modules Summary
+## Modules Summary
 
 | Module | Route | Status |
 |--------|-------|--------|
 | Dashboard | `/` | Live |
 | Daily Briefing | `/briefing` | Live |
 | AI Agents | `/agents` | Live |
-| Quant XAU Desk | `/xau` | Live · Capital.com live trading + consensus auto-trader |
+| Manual (TH) | `/manual` | Live · Thai user guide for every module + auto-trader flow diagram |
+| Quant XAU Desk | `/xau` | Live · Capital.com trading · timeframe picker · reseed button · Auto-Trader (CONSENSUS / MAJORITY_2OF3) · ↯ Trade now · 🧠 Brain panel · SL/TP/Margin columns |
 | Backtest Lab | `/backtest` | Live |
 | Finance / P&L | `/finance` | Live |
 | Smart Home Ops | `/home-ops` | Live |

@@ -130,22 +130,42 @@ const SECTIONS: Section[] = [
         <div>
           <div className="mono text-xs uppercase tracking-widest text-ink-dim mb-1">3. Candlestick Chart</div>
           <p className="text-ink-muted">
-            กราฟแท่งเทียน 1 นาที 200 แท่งล่าสุด ใช้ lightweight-charts (TradingView library)
+            กราฟแท่งเทียนจาก <span className="text-accent-green">Capital.com</span> (real OHLCV) — ถ้า Capital ใช้ไม่ได้ จะ fallback เป็น synthetic random walk
+          </p>
+          <p className="text-ink-muted mt-1">
+            <span className="text-ink">Timeframe picker</span> มุมขวาบน — เลือกได้ 1m / 5m / 15m / 30m / 1h / 4h / 1D / 1W
+          </p>
+          <p className="text-ink-muted mt-1">
+            <span className="text-ink">↻ reseed button</span> มุมขวาบน — กดเมื่อกราฟว่างหรือดูผิดปกติ
+            จะ wipe Price table + โหลด candles ใหม่จาก Capital (ใช้แทนการรัน curl ใน terminal)
           </p>
           <Tip>
-            ถ้ากราฟว่าง ให้รัน <code className="text-ink">curl -X POST http://localhost:3000/api/reseed</code>
-            แล้ว refresh — ระบบจะ seed 200 แท่งใหม่
+            ถ้ากราฟแสดง overlay กลางจอ &quot;Chart is empty — needs reseed&quot; ให้กดปุ่ม <span className="text-accent-purple">↻ Reseed candles</span> ตรงกลาง
           </Tip>
+          <p className="text-[12px] text-ink-muted mt-1">
+            ดูที่ subtitle เหนือกราฟเพื่อตรวจ source:{" "}
+            <span className="text-accent-green">Capital.com real OHLCV</span> = ข้อมูลจริง ·{" "}
+            <span className="text-accent-amber">local cache</span> = mix ของ seed + SSE ticks
+          </p>
         </div>
 
         <div>
           <div className="mono text-xs uppercase tracking-widest text-ink-purple mb-1">4. Auto-Trader 🤖</div>
           <p className="text-ink-muted mb-2">
-            บอทเทรดอัตโนมัติ ทำงานเมื่อ <span className="text-ink">RSI + MACD + EMA</span> ทั้ง 3 ตัวให้สัญญาณเดียวกัน
-            (CONSENSUS strategy)
+            บอทเทรดอัตโนมัติ — มี 2 strategy + ปุ่ม manual trigger
           </p>
+          <p className="font-semibold text-ink mb-1">เลือก Strategy:</p>
+          <ul className="flex flex-col gap-1 pl-4 list-disc text-ink-muted mb-2">
+            <li>
+              <span className="text-ink">CONSENSUS (3/3)</span> — RSI + MACD + EMA <em>ทั้ง 3 ตัว</em> ต้องเห็นพ้องกัน · strict · เทรดน้อย (default)
+            </li>
+            <li>
+              <span className="text-ink">MAJORITY (2/3)</span> — แค่ 2 ใน 3 เห็นพ้องกัน (ห้ามมีตัวที่ 3 ขัด) · moderate · เทรดบ่อยขึ้น (เหมาะสำหรับทดสอบ)
+            </li>
+          </ul>
           <p className="font-semibold text-ink mb-1">วิธีเปิดใช้:</p>
           <ol className="flex flex-col gap-1 pl-4 list-decimal text-ink-muted">
+            <li>เลือก <span className="text-ink">Strategy</span> จาก dropdown</li>
             <li>
               ตั้ง <span className="text-ink">Size</span> — ระวัง! Capital GOLD CFD = 1 contract = 100 oz
               <br />
@@ -165,10 +185,44 @@ const SECTIONS: Section[] = [
             <li>กด <span className="text-accent-purple">save params</span></li>
             <li>กด <span className="text-accent-green">○ OFF</span> เพื่อเปิด → จะมี confirmation popup</li>
           </ol>
+          <div className="mt-3 bg-accent-amber/10 border border-accent-amber/30 rounded p-3">
+            <p className="font-semibold text-accent-amber mb-2">เกี่ยวกับ SHORT — TP &amp; SL เซ็ตยังไง</p>
+            <p className="text-ink-muted mb-2">
+              SHORT = ขายก่อนแล้วซื้อคืนทีหลัง — ดังนั้น <span className="text-ink">profit เกิดเมื่อราคา <em>ลง</em></span>
+              ทำให้ TP ของ SHORT อยู่ <span className="text-ink">ต่ำกว่า</span> entry — <em>ถูกแล้ว ไม่ใช่ bug</em>
+            </p>
+            <table className="w-full text-[12px] mt-2">
+              <thead className="mono text-[10px] uppercase tracking-widest text-ink-dim">
+                <tr><th className="text-left py-1">ทิศทาง</th><th className="text-left py-1">SL (loss)</th><th className="text-left py-1">TP (profit)</th></tr>
+              </thead>
+              <tbody className="mono text-ink-muted">
+                <tr><td className="py-1 text-accent-green">LONG</td><td>ต่ำกว่า entry</td><td>สูงกว่า entry</td></tr>
+                <tr><td className="py-1 text-accent-red">SHORT</td><td>สูงกว่า entry</td><td>ต่ำกว่า entry</td></tr>
+              </tbody>
+            </table>
+            <p className="text-[11px] text-ink-dim mt-2">
+              ตัวอย่าง: SHORT entry 4500 · SL% 0.3 · TP% 1.0 → <span className="text-accent-red">SL 4513.50 (+0.30%)</span>{" "}
+              · <span className="text-accent-green">TP 4455.00 (−1.00%)</span>
+            </p>
+          </div>
+          <p className="font-semibold text-ink mb-1 mt-3">↯ Trade now — manual trigger:</p>
+          <p className="text-ink-muted">
+            ปุ่มสีอำพัน + LONG/SHORT toggle ทางขวาของ panel — กดเพื่อสั่งเทรดทันที{" "}
+            <span className="text-accent-amber">โดยไม่สนใจ signal หรือ cooldown</span> (ยังต้องผ่าน policy เหมือนเดิม)
+          </p>
+          <ul className="flex flex-col gap-1 pl-4 list-disc text-ink-muted mt-1">
+            <li>ใช้สำหรับ <span className="text-accent-amber">ทดสอบ</span> pipeline (open → broker → DB → memory → UI) ใน 5 วินาที</li>
+            <li>ถ้ามี position ทิศตรงข้ามอยู่ จะ flip ให้ (ปิดเก่า + เปิดใหม่ใน call เดียว)</li>
+            <li>ถ้ามี position ทิศเดียวกันอยู่แล้ว จะ refuse (ไม่ stack)</li>
+          </ul>
           <Tip>
-            บอท CONSENSUS จะไม่เทรดบ่อย — เพราะต้องรอให้ทั้ง 3 indicator เห็นพ้องกัน อาจรอเป็นชั่วโมง
-            ถ้าอยากให้บอทเทรดบ่อยขึ้นเพื่อทดสอบ บอกได้ จะเพิ่ม strategy แบบ RSI_ONLY หรือ MAJORITY_2OF3 ให้
+            อยากเห็นบอทเทรดบ่อยๆ เพื่อ test pipeline? เลือก <span className="text-ink">MAJORITY (2/3)</span> + กด <span className="text-accent-amber">↯ Trade now</span>
+            ครั้งแรกเพื่อยืนยันว่าทุกอย่างทำงาน
           </Tip>
+          <p className="text-[12px] text-ink-muted mt-2">
+            ดูรายละเอียดการทำงานของบอท + flow diagram ได้ที่ section{" "}
+            <a href="#auto-trader-flow" className="text-accent-purple underline">การทำงานของบอท (Flow)</a>
+          </p>
         </div>
 
         <div>
@@ -182,6 +236,12 @@ const SECTIONS: Section[] = [
         </div>
       </div>
     ),
+  },
+  {
+    id: "auto-trader-flow",
+    title: "การทำงานของบอท (Flow)",
+    subtitle: "Auto-Trader · decision flow + architecture",
+    body: <AutoTraderFlow />,
   },
   {
     id: "backtest",
@@ -368,18 +428,28 @@ const SECTIONS: Section[] = [
     body: (
       <div className="flex flex-col gap-4 text-sm leading-relaxed">
         <Faq q="กราฟไม่ขึ้น candle เลย">
-          Price table ว่าง — รัน{" "}
-          <code className="text-ink">curl -X POST http://localhost:3000/api/reseed</code>{" "}
-          แล้ว refresh หน้า
+          กดปุ่ม <span className="text-accent-purple">↻ reseed</span> มุมขวาบนของ chart{" "}
+          (หรือถ้ามี overlay กลางจอ กด <span className="text-accent-purple">↻ Reseed candles</span> ตัวใหญ่)
+          — ระบบจะ wipe Price table + โหลด real OHLCV ใหม่จาก Capital
+        </Faq>
+        <Faq q="กราฟแสดงแบบไม่จริง (สังเคราะห์)">
+          ดูที่ subtitle เหนือ chart:
+          <ul className="pl-4 list-disc mt-1 text-ink-muted">
+            <li><span className="text-accent-green">Capital.com real OHLCV</span> = ข้อมูลจริง</li>
+            <li><span className="text-accent-amber">synthetic</span> = สุ่ม (Capital ใช้ไม่ได้) — กด ↻ reseed อีกครั้งเมื่อ Capital กลับมา</li>
+          </ul>
+          เลือก timeframe อื่น (5m / 15m / 1h ฯลฯ) จะ fetch จาก Capital สดทุกครั้ง
         </Faq>
         <Faq q="Auto-Trader เปิดแล้วแต่ไม่เทรด">
           ดูบรรทัด <span className="text-ink">Last decision</span> ที่ panel:
           <ul className="pl-4 list-disc mt-1 text-ink-muted">
-            <li><code className="text-ink">not enough candles</code> → reseed (ดูข้อด้านบน)</li>
-            <li><code className="text-ink">no consensus</code> → บอททำงานปกติ แค่รอสัญญาณ อาจรอเป็นชั่วโมง</li>
+            <li><code className="text-ink">not enough candles</code> → กด ↻ reseed</li>
+            <li><code className="text-ink">no consensus signal</code> → รอ signal (เปลี่ยน strategy เป็น MAJORITY 2/3 จะเร็วขึ้น)</li>
+            <li><code className="text-ink">no majority_2of3 signal</code> → รอ signal เช่นเดียวกัน</li>
             <li><code className="text-ink">cooldown · Ns left</code> → รอ cooldown ผ่านไป</li>
             <li><code className="text-ink">tick error</code> → ดู console เซิร์ฟเวอร์ — มัก Capital API ล่ม / rate limit</li>
           </ul>
+          ถ้าอยากเห็นบอทเทรดทันที กดปุ่ม <span className="text-accent-amber">↯ Trade now</span> ที่ panel
         </Faq>
         <Faq q="Capital.com Demo signup แล้วใช้ไม่ได้">
           ตรวจ 3 อย่างใน <code className="text-ink">.env</code>:
@@ -402,8 +472,26 @@ const SECTIONS: Section[] = [
           ถ้า fallback ไป synthetic ราคาจะเดินสุ่ม — ดูที่ <span className="text-ink">Price Ticker</span> ว่าใช้ source ไหน
         </Faq>
         <Faq q="อยากให้ Auto-Trader เทรดบ่อยขึ้น">
-          ปัจจุบันใช้ strategy <code className="text-ink">CONSENSUS</code> (ทั้ง 3 indicator ต้องเห็นพ้อง)
-          ถ้าอยากให้บ่อยขึ้น บอกได้ จะเพิ่ม <code className="text-ink">RSI_ONLY</code> หรือ <code className="text-ink">MAJORITY_2OF3</code> ให้
+          มี 3 วิธี:
+          <ol className="pl-4 list-decimal mt-1 text-ink-muted">
+            <li>
+              สลับ Strategy เป็น <code className="text-ink">MAJORITY (2/3)</code> — แค่ 2 ใน 3 indicator เห็นพ้องก็พอ เทรดบ่อยกว่า CONSENSUS หลายเท่า
+            </li>
+            <li>
+              ลด <code className="text-ink">Cooldown</code> — default 30s ลดเป็น 10s ก็ได้ (อย่าลดต่ำกว่านี้เดี๋ยว whipsaw)
+            </li>
+            <li>
+              ใช้ <span className="text-accent-amber">↯ Trade now</span> — manual trigger สำหรับเทสต์ทันที (เลือก LONG/SHORT ก่อนกด)
+            </li>
+          </ol>
+        </Faq>
+        <Faq q="↯ Trade now ต่างกับ tick() ของ Auto-Trader ยังไง">
+          <ul className="pl-4 list-disc mt-1 text-ink-muted">
+            <li><span className="text-ink">tick()</span> รันทุก 5 วินาที + ดู signal + เคารพ cooldown</li>
+            <li><span className="text-ink">↯ Trade now</span> สั่งทันที + ไม่ดู signal + ไม่ดู cooldown</li>
+            <li>ทั้ง 2 อย่างยังต้องผ่าน <span className="text-accent-purple">policy guard</span> เหมือนกัน (MAX_TRADE_SIZE, DAILY_LOSS)</li>
+          </ul>
+          ใช้ ↯ Trade now เพื่อยืนยันว่า pipeline ทำงาน (broker → DB → memory → UI) โดยไม่ต้องรอ signal
         </Faq>
         <Faq q="เปลี่ยน DB จาก Postgres กลับเป็น SQLite ได้ไหม">
           ทำได้ แต่ต้อง migrate schema กลับ — ตอนนี้หลาย route ใช้ Postgres-native JSON column ที่ SQLite ไม่รองรับ
@@ -485,6 +573,344 @@ function Faq({ q, children }: { q: string; children: React.ReactNode }) {
     <div className="bg-bg-raised/60 rounded p-3 flex flex-col gap-1">
       <div className="mono text-xs text-accent-amber">Q: {q}</div>
       <div className="text-ink-muted text-sm pl-2 border-l-2 border-line">{children}</div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Auto-Trader deep-dive: architecture diagram + decision flow + timeline
+// ─────────────────────────────────────────────────────────────────────────────
+
+function AutoTraderFlow() {
+  return (
+    <div className="flex flex-col gap-6 text-sm leading-relaxed">
+      <div>
+        <p className="text-accent-purple font-semibold mb-2">บอททำงานยังไง — แบบสั้น</p>
+        <p className="text-ink-muted">
+          ทุก 5 วินาที (ตาม SSE pulse) บอทจะดึง 250 แท่งล่าสุดจาก DB คำนวณ RSI/MACD/EMA
+          เช็ค <span className="text-ink">signal ตาม strategy ที่เลือก</span>{" "}
+          (CONSENSUS = ทั้ง 3 เห็นพ้อง หรือ MAJORITY_2OF3 = 2 ใน 3 เห็นพ้อง)
+          ถ้าได้ signal → เปิดออเดอร์ (หรือ flip ถ้ามีออเดอร์ตรงข้ามอยู่)
+          ถ้าไม่ได้ → รอ ทุกขั้นตอนผ่าน policy guard ก่อน — กฎที่ละเมิดจะถูกส่งไปคิว HIL ให้คน approve
+        </p>
+        <p className="text-ink-muted mt-2">
+          นอกจากนี้มี <span className="text-accent-amber">↯ Trade now</span> เป็น manual trigger —
+          กดเพื่อเปิดออเดอร์ทันทีโดยไม่สนใจ signal/cooldown แต่ยังผ่าน policy เหมือนเดิม
+        </p>
+      </div>
+
+      {/* Architecture diagram */}
+      <div>
+        <h3 className="display text-base font-semibold mb-2">Architecture · ใครเรียกใคร</h3>
+        <ArchitectureDiagram />
+        <p className="text-[12px] text-ink-dim mt-2">
+          SSE stream เป็น heartbeat กลาง — เมื่อ browser tab เปิด stream จะรันทุก 5 วินาที
+          และทุก pulse จะเรียก <code className="text-ink">autoTrader.tick()</code>
+        </p>
+      </div>
+
+      {/* Decision flow */}
+      <div>
+        <h3 className="display text-base font-semibold mb-2">Decision Flow · บอทตัดสินใจยังไง</h3>
+        <DecisionFlow />
+      </div>
+
+      {/* Outcomes table */}
+      <div>
+        <h3 className="display text-base font-semibold mb-2">ผลลัพธ์ที่เป็นไปได้ (TickResult.action)</h3>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="mono text-[10px] uppercase tracking-widest text-ink-dim bg-bg-raised/40">
+              <tr>
+                <th className="text-left px-3 py-2 font-normal">Action</th>
+                <th className="text-left px-3 py-2 font-normal">เกิดเมื่อ</th>
+                <th className="text-left px-3 py-2 font-normal">โดน toast แจ้งเตือนไหม</th>
+              </tr>
+            </thead>
+            <tbody>
+              <ActionRow action="NONE"   tone="text-ink-dim"      when="บอทถูกปิด (enabled=false)" toast="ไม่" />
+              <ActionRow action="HOLD"   tone="text-ink-muted"    when="ยังคูลดาวน์ / ไม่มี signal / ตำแหน่งตรงกับสัญญาณอยู่แล้ว / Trade now กับทิศเดียวกัน" toast="ไม่" />
+              <ActionRow action="OPEN"   tone="text-accent-green" when="ไม่มี position + signal actionable (หรือ ↯ Trade now ครั้งแรก) → เปิดใหม่" toast="ใช่ · severity MEDIUM" />
+              <ActionRow action="FLIP"   tone="text-accent-amber" when="มี position ทิศตรงข้าม → ปิด+เปิดตรงข้าม (จาก tick หรือ Trade now)" toast="ใช่ · severity MEDIUM" />
+              <ActionRow action="QUEUED" tone="text-accent-purple" when="Policy block (เช่นเกิน MAX_TRADE_SIZE) → ส่ง HIL queue" toast="ใช่ · severity HIGH" />
+              <ActionRow action="ERROR"  tone="text-accent-red"   when="Capital API error / network / config ขาด" toast="ใช่ · severity HIGH" />
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Example timeline */}
+      <div>
+        <h3 className="display text-base font-semibold mb-2">ตัวอย่าง Timeline 1 วัน</h3>
+        <ExampleTimeline />
+      </div>
+
+      {/* Safety nets */}
+      <div>
+        <h3 className="display text-base font-semibold mb-2">ระบบป้องกัน (Safety Nets)</h3>
+        <ul className="flex flex-col gap-2 pl-4 list-disc text-ink-muted">
+          <li>
+            <span className="text-ink">routeAction() guard</span> — ทุกออเดอร์ผ่าน policy engine ก่อน
+            ถ้าละเมิด HIGH severity → ไม่ execute แต่ queue เข้า <a href="/approvals" className="text-accent-blue underline">/approvals</a>
+          </li>
+          <li>
+            <span className="text-ink">Cooldown (default 30s)</span> — กันบอท whipsaw ในวันที่ตลาดผันผวน
+            ถ้าเพิ่งเทรดเสร็จยังไม่ครบ cooldown จะไม่ trigger trade ใหม่
+          </li>
+          <li>
+            <span className="text-ink">One position at a time</span> — บอทจะมี open trade ได้แค่ 1 ตัวเสมอ
+            ถ้าจะเปิดใหม่ที่ทิศทางตรงข้าม ต้องปิดของเก่าก่อน (FLIP)
+          </li>
+          <li>
+            <span className="text-ink">DAILY_LOSS circuit breaker</span> — ถ้าตั้ง policy นี้
+            บอทจะถูกบล็อกทันทีเมื่อขาดทุนสะสมในวันเกิน threshold
+          </li>
+          <li>
+            <span className="text-ink">Kill switch</span> — ปุ่ม Kill บน panel ปิดบอททันที (ออเดอร์ที่เปิดอยู่ยังคงเปิด — ต้องปิดเองที่ Capital หรือ Trade Journal)
+          </li>
+          <li>
+            <span className="text-ink">Audit trail</span> — ทุก decision ถูกเขียนลง <a href="/memory" className="text-accent-blue underline">/memory</a>{" "}
+            พร้อม metadata (ดูได้ว่าทำไมตัดสินใจแบบนั้น)
+          </li>
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+function ArchitectureDiagram() {
+  // 700 × 360 — fits the panel width on most screens
+  return (
+    <div className="bg-bg-raised/40 rounded border border-line p-4 overflow-x-auto">
+      <svg viewBox="0 0 700 360" className="w-full min-w-[600px] h-auto">
+        {/* Node helper styles */}
+        <defs>
+          <marker id="arrow-blue" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+            <path d="M0,0 L10,5 L0,10 z" fill="#63B3ED" />
+          </marker>
+          <marker id="arrow-purple" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+            <path d="M0,0 L10,5 L0,10 z" fill="#B794F4" />
+          </marker>
+          <marker id="arrow-green" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+            <path d="M0,0 L10,5 L0,10 z" fill="#68D391" />
+          </marker>
+        </defs>
+
+        {/* Browser */}
+        <Node x={20}  y={20}  w={120} h={50} title="Browser tab" sub="StreamProvider" color="#63B3ED" />
+        {/* SSE Stream */}
+        <Node x={280} y={20}  w={140} h={50} title="/api/stream" sub="SSE pulse · 5s" color="#63B3ED" />
+        {/* autoTrader.tick */}
+        <Node x={540} y={20}  w={140} h={50} title="autoTrader.tick()" sub="ทุก 5 วินาที" color="#B794F4" />
+
+        {/* Inside tick — reads */}
+        <Node x={20}  y={140} w={140} h={50} title="Setting table" sub="autotrader.*" color="#5a6273" />
+        <Node x={200} y={140} w={140} h={50} title="Price table" sub="250 candles ล่าสุด" color="#5a6273" />
+        <Node x={380} y={140} w={140} h={50} title="indicators.ts" sub="RSI · MACD · EMA" color="#F6AD55" />
+        <Node x={560} y={140} w={120} h={50} title="router.ts" sub="routeAction()" color="#B794F4" />
+
+        {/* Outputs */}
+        <Node x={20}  y={260} w={140} h={50} title="capital.ts" sub="placeOrder/closeTrade" color="#68D391" />
+        <Node x={200} y={260} w={140} h={50} title="Trade table" sub="บันทึก order" color="#5a6273" />
+        <Node x={380} y={260} w={140} h={50} title="Memory" sub="audit log" color="#5a6273" />
+        <Node x={560} y={260} w={120} h={50} title="Task (HIL)" sub="ถ้า policy block" color="#FC8181" />
+
+        {/* Arrows */}
+        {/* Browser → SSE → tick */}
+        <Line x1={140} y1={45} x2={280} y2={45} color="#63B3ED" />
+        <Line x1={420} y1={45} x2={540} y2={45} color="#63B3ED" />
+
+        {/* tick down to data layer */}
+        <Line x1={610} y1={70} x2={610} y2={140} color="#B794F4" />
+        <Line x1={610} y1={140} x2={520} y2={140} color="#B794F4" />
+        <Line x1={520} y1={155} x2={450} y2={165} color="#B794F4" />
+        <Line x1={520} y1={165} x2={340} y2={165} color="#B794F4" />
+        <Line x1={520} y1={175} x2={160} y2={165} color="#B794F4" />
+
+        {/* router → capital + trade + memory + task */}
+        <Line x1={610} y1={190} x2={610} y2={260} color="#B794F4" />
+        <Line x1={560} y1={285} x2={520} y2={285} color="#B794F4" />
+        <Line x1={380} y1={285} x2={340} y2={285} color="#B794F4" />
+        <Line x1={200} y1={285} x2={160} y2={285} color="#68D391" />
+      </svg>
+      <div className="mono text-[10px] text-ink-dim mt-3 grid grid-cols-2 md:grid-cols-4 gap-2">
+        <Legend color="#63B3ED" label="SSE pulse" />
+        <Legend color="#B794F4" label="Logic / router" />
+        <Legend color="#F6AD55" label="Signals" />
+        <Legend color="#68D391" label="Broker call" />
+      </div>
+    </div>
+  );
+}
+
+function DecisionFlow() {
+  // Top-to-bottom decision tree
+  return (
+    <div className="bg-bg-raised/40 rounded border border-line p-4 overflow-x-auto">
+      <svg viewBox="0 0 700 680" className="w-full min-w-[600px] h-auto">
+        <defs>
+          <marker id="arr-grey" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+            <path d="M0,0 L10,5 L0,10 z" fill="#5a6273" />
+          </marker>
+        </defs>
+
+        {/* Start */}
+        <Node x={280} y={10} w={140} h={40} title="SSE pulse · 5s" sub="autoTrader.tick()" color="#63B3ED" />
+        <Line x1={350} y1={50} x2={350} y2={80} color="#5a6273" />
+
+        {/* Read config */}
+        <Decision x={280} y={80} w={140} h={50} label="enabled?" />
+        <Line x1={280} y1={105} x2={140} y2={105} color="#5a6273" />
+        <Label x={150} y={100} text="NO" />
+        <Node x={20} y={80} w={120} h={50} title="→ NONE" sub="ปิดอยู่ ไม่ทำอะไร" color="#5a6273" />
+
+        <Line x1={350} y1={130} x2={350} y2={160} color="#5a6273" />
+        <Label x={360} y={150} text="YES" />
+
+        {/* Cooldown */}
+        <Decision x={280} y={160} w={140} h={50} label="ใน cooldown?" />
+        <Line x1={420} y1={185} x2={560} y2={185} color="#5a6273" />
+        <Label x={490} y={180} text="YES" />
+        <Node x={560} y={160} w={120} h={50} title="→ HOLD" sub="รอจนพ้น cooldown" color="#5a6273" />
+
+        <Line x1={350} y1={210} x2={350} y2={240} color="#5a6273" />
+        <Label x={360} y={230} text="NO" />
+
+        {/* Get candles */}
+        <Node x={250} y={240} w={200} h={50} title="ดึง 250 candles + คำนวณ signals" sub="RSI · MACD · EMA" color="#F6AD55" />
+        <Line x1={350} y1={290} x2={350} y2={320} color="#5a6273" />
+
+        {/* Consensus check */}
+        <Decision x={260} y={320} w={180} h={60} label="ทั้ง 3 สัญญาณ" sub="เห็นพ้องกัน?" />
+        <Line x1={440} y1={350} x2={560} y2={350} color="#5a6273" />
+        <Label x={490} y={345} text="NO" />
+        <Node x={560} y={325} w={120} h={50} title="→ HOLD" sub="no consensus" color="#5a6273" />
+
+        <Line x1={350} y1={380} x2={350} y2={410} color="#5a6273" />
+        <Label x={360} y={400} text="YES (BUY/SELL)" />
+
+        {/* Open trade check */}
+        <Decision x={280} y={410} w={140} h={50} label="มี open trade?" />
+
+        {/* Branch: no open */}
+        <Line x1={280} y1={435} x2={140} y2={435} color="#5a6273" />
+        <Label x={150} y={430} text="NO" />
+        <Node x={20} y={410} w={120} h={50} title="OPEN ใหม่" sub="ทิศตามสัญญาณ" color="#68D391" />
+
+        {/* Branch: has open */}
+        <Line x1={350} y1={460} x2={350} y2={490} color="#5a6273" />
+        <Label x={360} y={480} text="YES" />
+
+        <Decision x={260} y={490} w={180} h={50} label="ทิศตรงกับสัญญาณ?" />
+        <Line x1={440} y1={515} x2={560} y2={515} color="#5a6273" />
+        <Label x={490} y={510} text="YES" />
+        <Node x={560} y={490} w={120} h={50} title="→ HOLD" sub="ถือตำแหน่งเดิม" color="#5a6273" />
+
+        <Line x1={350} y1={540} x2={350} y2={570} color="#5a6273" />
+        <Label x={360} y={560} text="NO" />
+        <Node x={260} y={570} w={180} h={50} title="FLIP" sub="ปิดเก่า + เปิดตรงข้าม" color="#F6AD55" />
+
+        {/* Final routing */}
+        <Line x1={80} y1={460} x2={80} y2={620} color="#5a6273" />
+        <Line x1={350} y1={620} x2={350} y2={620} color="#5a6273" />
+        <Line x1={80} y1={620} x2={620} y2={620} color="#5a6273" />
+
+        <Node x={20} y={620} w={120} h={50} title="routeAction()" sub="policy check" color="#B794F4" />
+
+        <Decision x={200} y={620} w={120} h={50} label="policy OK?" />
+        <Label x={155} y={655} text="YES → placeOrder · บันทึก Trade · Memory" />
+        <Label x={155} y={668} text="NO  → QUEUED · ส่งเข้า /approvals" />
+      </svg>
+    </div>
+  );
+}
+
+function ExampleTimeline() {
+  const events = [
+    { time: "08:00:00", action: "BOOT",   tone: "text-ink-muted",   text: "เปิด browser → SSE connected → autoTrader.tick() เริ่มทำงาน" },
+    { time: "08:00:05", action: "HOLD",   tone: "text-ink-muted",   text: "ไม่มี signal (rsi=NEUTRAL macd=SELL ema=BUY)" },
+    { time: "08:02:00", action: "OPEN",   tone: "text-accent-green", text: "ผู้ใช้กด ↯ Trade now (LONG) → manual trigger · เปิด LONG 0.01 @ 4520.10 ทันที" },
+    { time: "08:35:10", action: "HOLD",   tone: "text-ink-muted",   text: "MAJORITY 2/3 = BUY แต่ position LONG อยู่แล้ว → ถือต่อ" },
+    { time: "10:48:30", action: "FLIP",   tone: "text-accent-amber", text: "MAJORITY flip เป็น SELL → ปิด LONG @ 4528.10 (PnL +0.80) → เปิด SHORT 0.01" },
+    { time: "11:30:00", action: "QUEUED", tone: "text-accent-purple", text: "ผู้ใช้ลดค่า MAX_TRADE_SIZE = 0.005 → trade ใหม่โดน policy block → ไปคิว /approvals" },
+    { time: "11:30:15", action: "HOLD",   tone: "text-ink-muted",   text: "บอท cooldown 30s · waits" },
+    { time: "13:00:00", action: "STOP",   tone: "text-accent-red",  text: "ผู้ใช้กด Kill switch → enabled=false → ออเดอร์ที่เปิดอยู่ยังเปิด" },
+  ];
+  return (
+    <div className="bg-bg-raised/40 rounded border border-line overflow-hidden">
+      <table className="w-full text-sm">
+        <thead className="mono text-[10px] uppercase tracking-widest text-ink-dim bg-bg-raised/60">
+          <tr>
+            <th className="text-left px-3 py-2 font-normal w-24">Time</th>
+            <th className="text-left px-3 py-2 font-normal w-24">Action</th>
+            <th className="text-left px-3 py-2 font-normal">รายละเอียด</th>
+          </tr>
+        </thead>
+        <tbody>
+          {events.map((e, i) => (
+            <tr key={i} className="border-b border-line/60 last:border-b-0">
+              <td className="px-3 py-2 mono text-[11px] text-ink-dim tabular-nums">{e.time}</td>
+              <td className={`px-3 py-2 mono text-[11px] font-bold ${e.tone}`}>{e.action}</td>
+              <td className="px-3 py-2 mono text-[11px] text-ink-muted">{e.text}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function ActionRow({ action, tone, when, toast }: { action: string; tone: string; when: string; toast: string }) {
+  return (
+    <tr className="border-b border-line/60 last:border-b-0">
+      <td className={`px-3 py-2 mono text-[11px] font-bold ${tone}`}>{action}</td>
+      <td className="px-3 py-2 text-[12px] text-ink-muted">{when}</td>
+      <td className="px-3 py-2 mono text-[11px] text-ink-dim">{toast}</td>
+    </tr>
+  );
+}
+
+// SVG helpers ────────────────────────────────────────────────────────────────
+
+function Node({ x, y, w, h, title, sub, color }: { x: number; y: number; w: number; h: number; title: string; sub?: string; color: string }) {
+  return (
+    <g>
+      <rect x={x} y={y} width={w} height={h} rx={6} fill="#161a22" stroke={color} strokeWidth={1.5} />
+      <text x={x + w / 2} y={y + (sub ? 20 : h / 2 + 4)} textAnchor="middle" fill="#e6e9ef" fontSize="11" fontFamily="var(--font-space-mono), monospace" fontWeight="bold">{title}</text>
+      {sub && (
+        <text x={x + w / 2} y={y + 36} textAnchor="middle" fill="#8b93a3" fontSize="9" fontFamily="var(--font-space-mono), monospace">{sub}</text>
+      )}
+    </g>
+  );
+}
+
+function Decision({ x, y, w, h, label, sub }: { x: number; y: number; w: number; h: number; label: string; sub?: string }) {
+  // Diamond-ish via rect with sharper border — simpler than a real diamond and stays readable
+  return (
+    <g>
+      <rect x={x} y={y} width={w} height={h} rx={2} fill="#1a1f2a" stroke="#F6AD55" strokeWidth={1.5} strokeDasharray="4 2" />
+      <text x={x + w / 2} y={y + (sub ? 22 : h / 2 + 4)} textAnchor="middle" fill="#F6AD55" fontSize="11" fontFamily="var(--font-space-mono), monospace" fontWeight="bold">{label}</text>
+      {sub && (
+        <text x={x + w / 2} y={y + 38} textAnchor="middle" fill="#8b93a3" fontSize="10" fontFamily="var(--font-space-mono), monospace">{sub}</text>
+      )}
+    </g>
+  );
+}
+
+function Line({ x1, y1, x2, y2, color }: { x1: number; y1: number; x2: number; y2: number; color: string }) {
+  const marker = color === "#63B3ED" ? "arrow-blue" : color === "#B794F4" ? "arrow-purple" : color === "#68D391" ? "arrow-green" : "arr-grey";
+  return <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth={1.5} markerEnd={`url(#${marker})`} />;
+}
+
+function Label({ x, y, text }: { x: number; y: number; text: string }) {
+  return <text x={x} y={y} fill="#8b93a3" fontSize="10" fontFamily="var(--font-space-mono), monospace">{text}</text>;
+}
+
+function Legend({ color, label }: { color: string; label: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="inline-block h-3 w-6 rounded" style={{ background: color }} />
+      <span>{label}</span>
     </div>
   );
 }
