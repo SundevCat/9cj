@@ -40,8 +40,11 @@ function rsiSignals(closes: number[], period = 14, lo = 30, hi = 70): ("BUY" | "
   for (let i = 1; i < out.length; i++) {
     const prev = out[i - 1];
     const cur = out[i];
-    if (prev < lo && cur >= lo) sigs[pad + i] = "BUY";
-    else if (prev > hi && cur <= hi) sigs[pad + i] = "SELL";
+    // MOMENTUM (matches lib/indicators.ts computeRSI direction):
+    // BUY = price entering strong upside zone (cross UP through 70)
+    // SELL = price entering strong downside zone (cross DOWN through 30)
+    if (prev < hi && cur >= hi) sigs[pad + i] = "BUY";
+    else if (prev > lo && cur <= lo) sigs[pad + i] = "SELL";
   }
   return sigs;
 }

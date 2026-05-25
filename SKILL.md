@@ -72,6 +72,7 @@ When reviewing code, go through each section below and report findings.
 - [ ] Kanban status: `BACKLOG` | `IN_PROGRESS` | `REVIEW` | `DONE`
 - [ ] Finance type: `INCOME` | `EXPENSE`
 - [ ] Memory tags: `TRADE` | `POLICY` | `AI` | `SYS` | `OK` | `WARN` | `ERR`
+- [ ] **RSI is MOMENTUM, not mean-reversion**: `value < 30 → SELL`, `value > 70 → BUY`. Same direction in `lib/indicators.ts` (computeRSI) and `lib/backtest.ts` (rsiSignals crossover edges: BUY = cross UP through 70, SELL = cross DOWN through 30). Do NOT flip during code review thinking it's a bug — this is intentional.
 
 ### 7. Real-time / SSE
 

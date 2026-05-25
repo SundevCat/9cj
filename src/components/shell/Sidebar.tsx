@@ -47,8 +47,10 @@ export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="w-[200px] shrink-0 border-r border-line bg-bg-panel min-h-full">
-      <nav className="p-3 flex flex-col gap-5">
+    // flex-col + h-full so the footer pins to the bottom of the sidebar,
+    // and the nav can scroll internally on short viewports.
+    <aside className="w-[200px] shrink-0 border-r border-line bg-bg-panel flex flex-col h-full">
+      <nav className="p-3 flex flex-col gap-5 flex-1 overflow-y-auto">
         {NAV.map((group) => (
           <div key={group.group}>
             <div className="mono text-[10px] uppercase tracking-widest text-ink-dim px-2 mb-2">
@@ -80,7 +82,7 @@ export function Sidebar() {
           </div>
         ))}
       </nav>
-      <div className="mt-auto p-3 mono text-[10px] text-ink-dim border-t border-line">
+      <div className="p-3 mono text-[10px] text-ink-dim border-t border-line shrink-0">
         v0.1.0 · localhost
       </div>
     </aside>

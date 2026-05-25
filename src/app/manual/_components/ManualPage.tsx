@@ -125,6 +125,12 @@ const SECTIONS: Section[] = [
             แสดงค่า RSI(14), MACD(12,26,9), และ EMA 50/200 พร้อมป้าย <span className="text-accent-green">BUY</span> /{" "}
             <span className="text-accent-red">SELL</span> / <span className="text-accent-amber">NEUTRAL</span>
           </p>
+          <p className="text-[12px] text-ink-muted mt-2">
+            <span className="text-accent-amber">หมายเหตุ:</span> RSI ใช้แบบ <span className="text-ink">momentum</span> ไม่ใช่ mean-reversion มาตรฐาน
+            — RSI <span className="text-ink">&lt; 30 = SELL</span> (ตลาดร่วงแรง, ไปตามเทรนด์ลง) ·{" "}
+            RSI <span className="text-ink">&gt; 70 = BUY</span> (ตลาดขึ้นแรง, ไปตามเทรนด์ขึ้น)
+            ตรงข้ามกับตำราของ Wilder
+          </p>
         </div>
 
         <div>

@@ -34,7 +34,9 @@ export default function RootLayout({
         className={`${syne.variable} ${spaceMono.variable} bg-bg-base text-ink antialiased min-h-screen`}
       >
         <StreamProvider>
-          <div className="flex flex-col min-h-screen">
+          {/* h-screen (not min-h-screen) constrains the inner row so <main> scrolls
+              internally and Topbar/Sidebar stay pinned. Don't switch this back. */}
+          <div className="flex flex-col h-screen">
             <Topbar />
             <div className="flex flex-1 min-h-0">
               <Sidebar />

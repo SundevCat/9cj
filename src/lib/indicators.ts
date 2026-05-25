@@ -37,8 +37,12 @@ export function computeRSI(closes: number[], period = 14): RSIResult {
   const value = out[out.length - 1] ?? null;
   let signal: Signal = "NEUTRAL";
   if (value !== null) {
-    if (value < 30) signal = "BUY";
-    else if (value > 70) signal = "SELL";
+    // MOMENTUM (trend-following) — opposite of textbook Wilder convention.
+    // Rationale: in a strong downtrend RSI sits below 30 for extended periods,
+    // so we want to SELL with the trend, not fade it. Same for >70 → BUY.
+    // If you want classic mean-reversion (<30 BUY, >70 SELL), flip these.
+    if (value < 30) signal = "SELL";
+    else if (value > 70) signal = "BUY";
   }
   return { value: value === null ? null : Number(value.toFixed(2)), signal, period };
 }

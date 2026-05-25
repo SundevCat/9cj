@@ -487,7 +487,7 @@ function Brain({
             label={`RSI(${status.signals.rsi.period})`}
             value={status.signals.rsi.value?.toFixed(2) ?? "—"}
             signal={status.signals.rsi.signal}
-            hint="<30 BUY · >70 SELL"
+            hint="<30 SELL · >70 BUY (momentum)"
           />
           <IndicatorCard
             label="MACD(12,26,9)"

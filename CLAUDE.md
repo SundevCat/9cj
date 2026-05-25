@@ -245,6 +245,8 @@ HOME_ASSISTANT_TOKEN=...        # optional
 - Finance type: `INCOME` | `EXPENSE`
 - Kanban status: `BACKLOG` | `IN_PROGRESS` | `REVIEW` | `DONE`
 - Memory tags: `TRADE` | `POLICY` | `AI` | `SYS` | `OK` | `WARN` | `ERR`
+- **RSI uses MOMENTUM, not mean-reversion**: `value < 30 = SELL` (strong downside, ride the trend), `value > 70 = BUY` (strong upside, ride the trend). This is the **opposite** of the textbook Wilder convention. The flip applies to both live signals (`lib/indicators.ts`) AND backtest entries (`lib/backtest.ts` `rsiSignals`). Don't "fix" this during code review.
+- **Shell layout uses `h-screen` (NOT `min-h-screen`) on the inner flex container** in [`src/app/layout.tsx`](src/app/layout.tsx). This constrains the row so `<main>` scrolls internally and Sidebar/Topbar stay pinned. Switching back to `min-h-screen` breaks the app shell — the body scrolls, taking Sidebar with it.
 - **Live trades go through `routeAction()` from `src/lib/router.ts`** so `MAX_TRADE_SIZE` / `DAILY_LOSS` policies + HIL approvals always apply — including auto-trader orders.
 - **Auto-trader** runs server-side on the SSE pulse (every 5s); config + state live in the `Setting` table under `autotrader.*` keys. Never call `placeOrder()` directly from `tick()` — always go through `routeAction()`.
 - **Auto-trader strategies**: `CONSENSUS` (3/3) and `MAJORITY_2OF3` (2/3 with no opposing). Strategy dispatcher is `deriveSignal()` in [`src/lib/autoTrader.ts`](src/lib/autoTrader.ts) — exported so other code can reuse the same vote math.

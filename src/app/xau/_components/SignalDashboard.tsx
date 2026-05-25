@@ -67,7 +67,7 @@ export function SignalDashboard({ refreshMs = 30_000 }: { refreshMs?: number }) 
           {data?.rsi.value ?? "—"}
         </div>
         <div className="mono text-[11px] text-ink-dim">
-          &lt;30 oversold · &gt;70 overbought
+          momentum · &lt;30 SELL · &gt;70 BUY
         </div>
       </div>
 
