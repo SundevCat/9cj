@@ -22,7 +22,6 @@ export async function GET(req: NextRequest) {
 
   const stream = new ReadableStream({
     async start(controller) {
-      // Seed the cursors so we only emit new things from now on
       const [maxMem, maxTask, maxVio] = await Promise.all([
         prisma.memory.findFirst({ orderBy: { id: "desc" }, select: { id: true } }),
         prisma.task.findFirst({ orderBy: { id: "desc" }, select: { id: true } }),
@@ -41,13 +40,11 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      // Initial tick so the client knows it's connected
       send({ type: "tick", time: Date.now() });
 
       async function pulse() {
         if (stopped) return;
         try {
-          // Price tick — re-uses the same fetch path the manual ticker uses
           await ensurePriceHistory(200);
           const spot = await fetchSpotXAU();
           await recordTick(spot.price);
@@ -56,7 +53,6 @@ export async function GET(req: NextRequest) {
           const delta = spot.price - prev;
           send({ type: "price", value: spot.price, delta: Number(delta.toFixed(2)), source: spot.source });
 
-          // Stream any new memory entries since last cursor
           const fresh = await prisma.memory.findMany({
             where: { id: { gt: lastMemoryId } },
             orderBy: { id: "asc" },
@@ -76,7 +72,6 @@ export async function GET(req: NextRequest) {
             });
           }
 
-          // New violations → emit alert events
           const vios = await prisma.violation.findMany({
             where: { id: { gt: lastViolationId } },
             orderBy: { id: "asc" },
@@ -94,7 +89,6 @@ export async function GET(req: NextRequest) {
             });
           }
 
-          // New tasks → alert if HIGH
           const tasks = await prisma.task.findMany({
             where: { id: { gt: lastTaskId } },
             orderBy: { id: "asc" },
@@ -113,36 +107,18 @@ export async function GET(req: NextRequest) {
             }
           }
 
-          // Snapshot metrics
-          const [services, healthyChecks, approvals] = await Promise.all([
-            prisma.service.findMany({ where: { enabled: true } }),
-            prisma.serviceCheck.findMany({
-              where: {
-                ts: { gte: new Date(Date.now() - 30 * 60_000) }, // last 30 minutes
-              },
-              orderBy: { ts: "desc" },
-            }),
-            prisma.task.count({ where: { status: "PENDING" } }),
-          ]);
-          const latestPerService = new Map<number, boolean>();
-          for (const c of healthyChecks) {
-            if (!latestPerService.has(c.serviceId)) latestPerService.set(c.serviceId, c.ok);
-          }
-          const healthy = Array.from(latestPerService.values()).filter(Boolean).length;
-          // Crude price perf: pct change of last vs 100 candles back
+          const approvalsPending = await prisma.task.count({ where: { status: "PENDING" } });
           const recent = await prisma.price.findMany({ orderBy: { timestamp: "desc" }, take: 100 });
           const pricePerf = recent.length > 1 ? (recent[0].close - recent[recent.length - 1].close) / recent[recent.length - 1].close : 0;
 
           send({
             type: "metrics",
-            servicesHealthy: healthy,
-            servicesTotal: services.length,
-            approvalsPending: approvals,
+            servicesHealthy: 0,
+            servicesTotal: 0,
+            approvalsPending,
             pricePerf: Number((pricePerf * 100).toFixed(3)),
           });
 
-          // Auto-trader — fire after metrics so the dashboard reflects the latest state
-          // when the action toast lands. Errors are swallowed so the SSE pulse stays alive.
           try {
             const at = await autoTraderTick();
             if (at.action !== "NONE" && at.action !== "HOLD") {
@@ -155,10 +131,9 @@ export async function GET(req: NextRequest) {
               });
             }
           } catch {
-            // Auto-trader bugs must not kill the SSE pulse
+            // swallow — keep pulse alive
           }
         } catch (e) {
-          // Don't crash the stream on a transient error
           send({
             type: "memory",
             entry: {
@@ -172,7 +147,6 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      // Fire immediately, then every 5s
       pulse();
       const interval = setInterval(pulse, 5000);
 

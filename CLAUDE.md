@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-A Personal AI Operating System built as a dark OS-style web dashboard. Runs on `localhost:3000`. State lives in local PostgreSQL via Prisma. Live trading goes through Capital.com's REST API.
+A focused trading dashboard for XAU/USD. Runs on `localhost:3000`. State lives in a local SQLite file (`prisma/dev.db`) via Prisma. Live trading goes through Capital.com's REST API.
 
 ## Tech Stack
 
@@ -11,7 +11,7 @@ A Personal AI Operating System built as a dark OS-style web dashboard. Runs on `
 | Framework | Next.js 14 (App Router, `src/` directory) |
 | Language | TypeScript |
 | Styling | Tailwind CSS |
-| Database | PostgreSQL (Docker) via Prisma ORM |
+| Database | SQLite (single file at `prisma/dev.db`) via Prisma ORM |
 | Charts | Recharts + Lightweight Charts (TradingView) |
 | Indicators | `technicalindicators` npm package |
 | Price Data | Capital.com (primary, bid/ask) → gold-api.com (fallback) → synthetic |
@@ -59,7 +59,7 @@ The build catches type errors `next dev` doesn't surface (the build worker
 uses stricter TS settings, e.g. it won't iterate `Map` / `Set` with `[...]`
 spread — use `Array.from(...)` instead). Common type traps in this codebase:
 
-- Prisma `Json?` columns: use `metadata ? (metadata as Prisma.InputJsonValue) : Prisma.JsonNull` — never raw `null`, never `JSON.stringify` (Postgres column is native JSON).
+- SQLite has no native JSON — `Memory.metadata`, `Task.metadata`, `Violation.context`, `BrokerSnapshot.raw` are `String?` / `String`. Always `JSON.stringify` on write and `JSON.parse` on read.
 - `Map.entries()` / `Map.values()` / `Set` spread: use `Array.from(...)`, not `[...x]`.
 - `routeAction({ pnl })`: expects `number | undefined`, not `number | null` — pass `pnl ?? undefined`.
 - Recharts `<Tooltip formatter>`: param is `ValueType | undefined`, not `number` — coerce with `Number(v)`.
@@ -74,17 +74,6 @@ src/
 ├── app/
 │   ├── page.tsx                          # Dashboard (root)
 │   ├── layout.tsx                        # Root layout with shell + StreamProvider
-│   ├── agents/                           # AI Orchestration module
-│   ├── approvals/                        # Human-in-Loop module
-│   ├── backtest/                         # Backtest Lab module
-│   ├── briefing/                         # Daily Briefing page
-│   ├── devops/                           # DevOps uptime monitor
-│   ├── finance/                          # Finance / P&L module
-│   ├── home-ops/                         # Smart Home Ops module
-│   ├── memory/                           # Memory / Audit Plane
-│   ├── policy/                           # Policy Governance module
-│   ├── product-ops/                      # ProductOps Kanban board
-│   ├── settings/                         # Settings page
 │   ├── xau/                              # Quant XAU Trading Desk + auto-trader
 │   └── api/                              # API routes (see below)
 ├── components/
@@ -98,14 +87,10 @@ src/
     ├── broker.ts                         # Broker facade (Capital-only today)
     ├── autoTrader.ts                     # Consensus-driven auto-trader (RSI+MACD+EMA)
     ├── indicators.ts                     # RSI, MACD, EMA calculations
-    ├── backtest.ts                       # Strategy runner
-    ├── finance.ts                        # Finance helpers
-    ├── homeAssistant.ts                  # Home Assistant REST API
     ├── memory.ts                         # Memory log helpers
-    ├── pinger.ts                         # Service health checker
-    ├── policy.ts                         # Policy rule engine
+    ├── policy.ts                         # Policy rule engine (programmatic; no admin UI)
     ├── router.ts                         # Policy + HIL action router
-    ├── seed.ts                           # DB seed helpers
+    ├── seed.ts                           # Price history seed helpers
     └── setting.ts                        # Settings key/value store
 ```
 
@@ -130,46 +115,24 @@ API routes live at `src/app/api/<module>/route.ts` — always use Prisma for DB 
 | `/api/price/history` | GET | OHLCV price history |
 | `/api/signals` | GET | RSI/MACD/EMA signals |
 | `/api/trades` | GET, POST | Trade journal + live order placement (isLive flag) |
-| `/api/backtest` | GET, POST | Backtest runner |
 | `/api/broker/info` | GET | Active broker + readiness |
-| `/api/broker/account` | GET | Broker account summary (cached 30s, includes account name) |
+| `/api/broker/account` | GET | Broker account summary (cached 30s) |
 | `/api/broker/market-info` | GET | Capital market info (margin factor, lot size); cached 5min |
 | `/api/broker/trades/close` | POST | Close a live broker position (with 404→open-positions recovery) |
 | `/api/autotrader` | GET, PUT | Auto-trader config + state |
 | `/api/autotrader/status` | GET | Read-only dry-run: signals, votes, verdict, next action |
 | `/api/autotrader/trigger` | POST | Manual "Trade now" — bypasses signal + cooldown |
-| `/api/finance/entries` | GET, POST | Income/expense entries |
-| `/api/finance/summary` | GET | Finance summary |
-| `/api/finance/budgets` | GET, POST | Budget management |
-| `/api/finance/holdings` | GET, POST | Portfolio holdings |
-| `/api/finance/import` | POST | CSV import |
-| `/api/home/devices` | GET, POST | Smart home devices |
-| `/api/home/device/[id]/toggle` | POST | Toggle device |
-| `/api/home/mode` | GET, POST | Home mode |
-| `/api/devops/services` | GET, POST | Monitored services |
-| `/api/devops/services/[id]` | PATCH, DELETE | Service management |
-| `/api/devops/deploys` | GET, POST | Deploy log |
-| `/api/devops/check-all` | POST | Run all health checks |
-| `/api/kanban` | GET, POST | Kanban cards |
-| `/api/kanban/[id]` | PATCH, DELETE | Card management |
-| `/api/kanban/reorder` | POST | Drag-drop reorder |
-| `/api/memories` | GET, POST | Memory log entries |
-| `/api/policies` | GET, POST | Policy rules |
-| `/api/policies/[id]` | PATCH, DELETE | Policy management |
-| `/api/violations` | GET | Policy violations |
-| `/api/tasks` | GET, POST | Human-in-loop tasks |
-| `/api/tasks/[id]` | PATCH | Approve/reject task |
-| `/api/settings` | GET, POST | App settings |
+| `/api/memories` | GET, POST | Memory log entries (dashboard activity feed) |
+| `/api/reseed` | POST | Reseed price history |
 | `/api/stream` | GET | SSE real-time stream (also fires auto-trader tick) |
-| `/api/briefing` | GET | Daily briefing |
 
-## Prisma Schema (PostgreSQL)
+## Prisma Schema (SQLite)
 
-Models: `Trade`, `Memory`, `Policy`, `Task`, `Price`, `FinanceEntry`, `Budget`, `PortfolioHolding`, `Service`, `ServiceCheck`, `DeployLog`, `Setting`, `KanbanCard`, `Violation`, `BrokerSnapshot`
+Models: `Trade`, `Memory`, `Policy`, `Task`, `Price`, `Setting`, `Violation`, `BrokerSnapshot`
 
-Database URL set via `DATABASE_URL` in `.env` (PostgreSQL via Docker). `BrokerSnapshot` uses `@map("OandaSnapshot")` so the underlying Postgres table keeps its original name — historical snapshots are preserved.
+`DATABASE_URL="file:./dev.db"` in `.env` — resolved relative to `prisma/`. No Docker / external services required.
 
-`Trade.brokerOrderId` and `Trade.brokerDealId` are TypeScript-level names; the underlying Postgres columns remain `oandaOrderId`/`oandaTradeId` via Prisma `@map`. Historical rows are intact.
+`Policy`, `Task`, and `Violation` have no admin UI but stay in the schema because `routeAction()` enforces them on every live trade.
 
 ## Design System
 
@@ -218,7 +181,7 @@ The pulse runs every 5s and also drives `autoTrader.tick()` so the bot acts on t
 ## Environment Variables
 
 ```env
-DATABASE_URL="postgresql://9cj:9cj_secret@localhost:5432/9cj_db"
+DATABASE_URL="file:./dev.db"
 TZ=Asia/Bangkok
 
 BROKER=capital                  # capital | none (auto-detect if unset)
@@ -227,14 +190,11 @@ CAPITAL_API_KEY=...             # Capital.com API key
 CAPITAL_EMAIL=...               # Capital.com login email
 CAPITAL_API_PASSWORD=...        # Capital.com custom API password (NOT login password)
 CAPITAL_ENV=demo                # demo | live
-
-HOME_ASSISTANT_URL=...          # optional
-HOME_ASSISTANT_TOKEN=...        # optional
 ```
 
 ## Key Conventions
 
-- All monetary amounts default to **THB (฿)** in finance; trades are USD per Capital.com.
+- Trades are USD per Capital.com.
 - Timestamps stored UTC, displayed in **Asia/Bangkok** timezone.
 - Use `prisma` singleton from `src/lib/prisma.ts` — never import `PrismaClient` directly.
 - API routes return `NextResponse.json(data)` — always handle errors with `{ error: message }`.
@@ -242,8 +202,6 @@ HOME_ASSISTANT_TOKEN=...        # optional
 - Signal values: `BUY` | `SELL` | `NEUTRAL`
 - Trade direction: `LONG` | `SHORT`
 - Task status: `PENDING` | `APPROVED` | `REJECTED` | `DONE`
-- Finance type: `INCOME` | `EXPENSE`
-- Kanban status: `BACKLOG` | `IN_PROGRESS` | `REVIEW` | `DONE`
 - Memory tags: `TRADE` | `POLICY` | `AI` | `SYS` | `OK` | `WARN` | `ERR`
 - **RSI uses MOMENTUM, not mean-reversion**: `value < 30 = SELL` (strong downside, ride the trend), `value > 70 = BUY` (strong upside, ride the trend). This is the **opposite** of the textbook Wilder convention. The flip applies to both live signals (`lib/indicators.ts`) AND backtest entries (`lib/backtest.ts` `rsiSignals`). Don't "fix" this during code review.
 - **Shell layout uses `h-screen` (NOT `min-h-screen`) on the inner flex container** in [`src/app/layout.tsx`](src/app/layout.tsx). This constrains the row so `<main>` scrolls internally and Sidebar/Topbar stay pinned. Switching back to `min-h-screen` breaks the app shell — the body scrolls, taking Sidebar with it.
@@ -259,17 +217,5 @@ HOME_ASSISTANT_TOKEN=...        # optional
 
 | Module | Route | Status |
 |--------|-------|--------|
-| Dashboard | `/` | Live |
-| Daily Briefing | `/briefing` | Live |
-| AI Agents | `/agents` | Live |
-| Manual (TH) | `/manual` | Live · Thai user guide for every module + auto-trader flow diagram |
-| Quant XAU Desk | `/xau` | Live · Capital.com trading · timeframe picker · reseed button · Auto-Trader (CONSENSUS / MAJORITY_2OF3) · ↯ Trade now · 🧠 Brain panel · SL/TP/Margin columns |
-| Backtest Lab | `/backtest` | Live |
-| Finance / P&L | `/finance` | Live |
-| Smart Home Ops | `/home-ops` | Live |
-| ProductOps Kanban | `/product-ops` | Live |
-| DevOps Uptime | `/devops` | Live |
-| Memory / Audit | `/memory` | Live |
-| Policy Governance | `/policy` | Live |
-| Human-in-Loop | `/approvals` | Live |
-| Settings | `/settings` | Live |
+| Dashboard | `/` | Live · XAU price · stream status · activity feed |
+| Quant XAU Desk | `/xau` | Live · Capital.com trading · timeframe picker · reseed · Auto-Trader (CONSENSUS / MAJORITY_2OF3) · ↯ Trade now · 🧠 Brain panel · SL/TP/Margin columns |

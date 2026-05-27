@@ -29,7 +29,6 @@ export async function ensurePriceHistory(
             volume: c.volume || null,
             source: "capital",
           })),
-          skipDuplicates: true,
         });
         const count = await prisma.price.count();
         console.info(`[seed] loaded ${candles.length} real ${resolution} candles from Capital`);

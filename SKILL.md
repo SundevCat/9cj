@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Review new or modified code in the **9CJ Corp Personal AI Operating System** project against its established conventions. This skill checks correctness, consistency, security, and maintainability — specifically for this Next.js 14 / Prisma / PostgreSQL / Tailwind / Capital.com stack.
+Review new or modified code in the **9CJ Corp** XAU trading dashboard against its established conventions. Stack: Next.js 14 / Prisma / SQLite / Tailwind / Capital.com.
 
 ---
 
@@ -43,8 +43,8 @@ When reviewing code, go through each section below and report findings.
 - [ ] Queries use `try/catch` and return proper error responses
 - [ ] New models match the existing naming conventions (PascalCase models, camelCase fields)
 - [ ] No raw SQL unless absolutely necessary — use Prisma query API
-- [ ] Migrations run with `npx prisma migrate dev --name <change>`. After schema edits, **existing Postgres data must be preserved** — prefer column renames (Prisma `@map`) over drop/add when renaming.
-- [ ] JSON columns use `Json?` (native Postgres) — no `JSON.stringify()` before `prisma.create`
+- [ ] Migrations run with `npx prisma migrate dev --name <change>`.
+- [ ] SQLite has no native JSON — `Memory.metadata`, `Task.metadata`, `Violation.context`, `BrokerSnapshot.raw` are `String?` / `String`. `JSON.stringify` on write, `JSON.parse` on read.
 
 ### 4. TypeScript
 
@@ -65,14 +65,11 @@ When reviewing code, go through each section below and report findings.
 
 ### 6. Data Conventions
 
-- [ ] Monetary amounts in **THB (฿)** by default — currency field present where needed
 - [ ] Timestamps stored in UTC, displayed in **Asia/Bangkok** timezone
 - [ ] Trade direction: `LONG` | `SHORT`
 - [ ] Task status: `PENDING` | `APPROVED` | `REJECTED` | `DONE`
-- [ ] Kanban status: `BACKLOG` | `IN_PROGRESS` | `REVIEW` | `DONE`
-- [ ] Finance type: `INCOME` | `EXPENSE`
 - [ ] Memory tags: `TRADE` | `POLICY` | `AI` | `SYS` | `OK` | `WARN` | `ERR`
-- [ ] **RSI is MOMENTUM, not mean-reversion**: `value < 30 → SELL`, `value > 70 → BUY`. Same direction in `lib/indicators.ts` (computeRSI) and `lib/backtest.ts` (rsiSignals crossover edges: BUY = cross UP through 70, SELL = cross DOWN through 30). Do NOT flip during code review thinking it's a bug — this is intentional.
+- [ ] **RSI is MOMENTUM, not mean-reversion**: `value < 30 → SELL`, `value > 70 → BUY`. Direction in `lib/indicators.ts` (computeRSI). Do NOT flip during code review thinking it's a bug — this is intentional.
 
 ### 7. Real-time / SSE
 
@@ -107,7 +104,6 @@ When reviewing code, go through each section below and report findings.
 - [ ] Price history queries bounded by date range or `take:` — no unbounded `findMany()`
 - [ ] `/api/price/history?resolution=MINUTE` serves from local Price table; higher resolutions pass through to Capital live (no local cache)
 - [ ] Higher-timeframe candle fetches dedupe by timestamp at the API boundary (`dedupeByTimestamp`) — lightweight-charts asserts strict-ascending unique time
-- [ ] Backtest runs isolated to `src/lib/backtest.ts` — not inline in API routes
 - [ ] Auto-trader `tick()` short-circuits on `!enabled` and on cooldown before any DB query that's not needed
 
 ---
@@ -152,10 +148,8 @@ Report findings as:
 | Shell layout | `src/components/shell/` |
 | SSE provider | `src/components/stream/StreamProvider.tsx` |
 | Prisma schema | `prisma/schema.prisma` |
+| SQLite DB file | `prisma/dev.db` |
 | Env config | `.env` |
-| Broker docs | `docs/BROKERS.md` |
-| Optional integrations | `docs/OPTIONAL_INTEGRATIONS.md` |
-| Thai user manual | `src/app/manual/` |
 | XAU desk UI (PriceTicker, SignalDashboard, CandlestickChart, AutoTraderPanel + Brain, TradeJournal) | `src/app/xau/_components/` |
 
 ---

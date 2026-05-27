@@ -1,12 +1,12 @@
 // 9CJ Corp — Personal AI Operating System
-// Prisma schema (PostgreSQL)
+// Prisma schema (SQLite — single file at prisma/dev.db)
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -20,12 +20,10 @@ model Trade {
   pnl           Float?
   status        String   @default("OPEN")  // OPEN | CLOSED | CANCELLED
   notes         String?
-  // Live broker fields (broker-agnostic; currently Capital.com).
-  // @map preserves the existing OANDA-named columns so historical rows keep their values.
-  brokerDealId  String?  @map("oandaTradeId")  // Capital dealId; old OANDA tradeId values preserved
-  brokerOrderId String?  @map("oandaOrderId")  // Capital dealReference; old OANDA orderId values preserved
-  fillPrice     Float?   // actual fill price from broker
-  isLive        Boolean  @default(false)       // false = journal only, true = real live trade
+  brokerDealId  String?  // Capital dealId (persistent position id)
+  brokerOrderId String?  // Capital dealReference
+  fillPrice     Float?
+  isLive        Boolean  @default(false)
   instrument    String   @default("XAU_USD")
   stopLoss      Float?
   takeProfit    Float?
@@ -38,9 +36,9 @@ model Memory {
   id        Int      @id @default(autoincrement())
   createdAt DateTime @default(now())
   agent     String
-  tag       String   // TRADE | POLICY | AI | SYS | OK
+  tag       String   // TRADE | POLICY | AI | SYS | OK | WARN | ERR
   message   String
-  metadata  Json?    // native JSON (PostgreSQL)
+  metadata  String?  // JSON-encoded; SQLite has no native JSON
 
   @@index([createdAt])
   @@index([tag])
@@ -50,7 +48,7 @@ model Policy {
   id          Int      @id @default(autoincrement())
   name        String
   description String
-  ruleType    String   // MAX_TRADE_SIZE | DAILY_LOSS | SPEND_LIMIT | etc
+  ruleType    String   // MAX_TRADE_SIZE | DAILY_LOSS | etc
   threshold   Float
   enabled     Boolean  @default(true)
   violations  Int      @default(0)
@@ -61,9 +59,9 @@ model Task {
   createdAt DateTime @default(now())
   title     String
   module    String
-  priority  String   @default("MEDIUM") // HIGH | MEDIUM | LOW
-  status    String   @default("PENDING") // PENDING | APPROVED | REJECTED | DONE
-  metadata  Json?    // native JSON (PostgreSQL)
+  priority  String   @default("MEDIUM")
+  status    String   @default("PENDING")
+  metadata  String?  // JSON-encoded
 
   @@index([status])
 }
@@ -76,72 +74,9 @@ model Price {
   low       Float
   close     Float
   volume    Float?
-  source    String   @default("gold-api") // gold-api | oanda
+  source    String   @default("gold-api")
 
   @@index([timestamp])
-}
-
-model FinanceEntry {
-  id         Int      @id @default(autoincrement())
-  createdAt  DateTime @default(now())
-  occurredOn DateTime @default(now())
-  type       String   // INCOME | EXPENSE
-  category   String
-  amount     Float
-  currency   String   @default("THB")
-  notes      String?
-
-  @@index([occurredOn])
-  @@index([type, category])
-}
-
-model Budget {
-  id       Int    @id @default(autoincrement())
-  category String @unique
-  monthly  Float
-  currency String @default("THB")
-}
-
-model PortfolioHolding {
-  id        Int      @id @default(autoincrement())
-  asset     String   @unique // XAU | CASH | EQUITIES | CRYPTO | ...
-  amount    Float            // amount in base currency
-  currency  String   @default("THB")
-  notes     String?
-  updatedAt DateTime @updatedAt
-}
-
-model Service {
-  id        Int            @id @default(autoincrement())
-  name      String         @unique
-  url       String
-  enabled   Boolean        @default(true)
-  createdAt DateTime       @default(now())
-  checks    ServiceCheck[]
-}
-
-model ServiceCheck {
-  id        Int      @id @default(autoincrement())
-  serviceId Int
-  service   Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
-  ts        DateTime @default(now())
-  ok        Boolean
-  status    Int?
-  latencyMs Int?
-  error     String?
-
-  @@index([serviceId, ts])
-}
-
-model DeployLog {
-  id      Int      @id @default(autoincrement())
-  ts      DateTime @default(now())
-  service String
-  version String?
-  status  String   @default("OK") // OK | FAIL | ROLLBACK
-  notes   String?
-
-  @@index([ts])
 }
 
 model Setting {
@@ -150,29 +85,14 @@ model Setting {
   updatedAt DateTime @updatedAt
 }
 
-model KanbanCard {
-  id          Int      @id @default(autoincrement())
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  title       String
-  description String?
-  status      String   @default("BACKLOG") // BACKLOG | IN_PROGRESS | REVIEW | DONE
-  priority    String   @default("MEDIUM")  // HIGH | MEDIUM | LOW
-  moduleTag   String?
-  dueDate     DateTime?
-  position    Int      @default(0)
-
-  @@index([status, position])
-}
-
 model Violation {
   id        Int      @id @default(autoincrement())
   ts        DateTime @default(now())
   policyId  Int
   module    String
   action    String
-  context   Json     // native JSON (PostgreSQL)
-  severity  String   @default("MEDIUM") // HIGH | MEDIUM | LOW
+  context   String   // JSON-encoded
+  severity  String   @default("MEDIUM")
   resolved  Boolean  @default(false)
   taskId    Int?
 
@@ -180,21 +100,17 @@ model Violation {
   @@index([resolved])
 }
 
-// Broker account snapshot — cached to avoid excessive API calls
 model BrokerSnapshot {
   id             Int      @id @default(autoincrement())
   fetchedAt      DateTime @default(now())
-  broker         String   @default("capital") // origin broker (capital | none)
+  broker         String   @default("capital")
   accountId      String
   balance        Float
   unrealizedPL   Float
   realizedPL     Float
   marginUsed     Float
   openTradeCount Int
-  raw            Json     // full account JSON from the broker
+  raw            String   // JSON-encoded
 
-  // @@map keeps the existing Postgres table so we don't lose snapshots.
-  // Table can be renamed in a cleanup migration later.
-  @@map("OandaSnapshot")
   @@index([fetchedAt])
 }

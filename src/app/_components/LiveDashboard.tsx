@@ -7,16 +7,7 @@ import { ModuleCard } from "@/components/ui/ModuleCard";
 import { LogEntry } from "@/components/ui/LogEntry";
 
 const MODULES = [
-  { title: "AI Agents",         description: "Task queue, multi-agent routing, activity feed.",       href: "/agents",      tone: "green"  as const, status: "READY" },
-  { title: "Quant XAU Desk",    description: "Live gold price, RSI/MACD/EMA signals, trade journal.", href: "/xau",         tone: "amber"  as const, status: "LIVE"  },
-  { title: "Backtest Lab",      description: "Run RSI/MACD/EMA strategies on historical OHLCV.",      href: "/backtest",    tone: "purple" as const, status: "READY" },
-  { title: "Finance / P&L",     description: "Income, expenses, budget vs actuals, portfolio mix.",   href: "/finance",     tone: "green"  as const, status: "READY" },
-  { title: "Smart Home Ops",    description: "Home Assistant devices, modes, energy usage.",          href: "/home-ops",    tone: "blue"   as const, status: "READY" },
-  { title: "ProductOps",        description: "Kanban board for personal product/project work.",       href: "/product-ops", tone: "blue"   as const, status: "READY" },
-  { title: "DevOps",            description: "Uptime monitor, deploy log, service health grid.",      href: "/devops",      tone: "blue"   as const, status: "READY" },
-  { title: "Memory / Audit",    description: "Searchable log of every decision, action, and event.",  href: "/memory",      tone: "purple" as const, status: "READY" },
-  { title: "Policy Governance", description: "Define rules. Block actions. Log violations.",          href: "/policy",      tone: "purple" as const, status: "READY" },
-  { title: "Human-in-Loop",     description: "Approval queue for actions flagged by policy.",         href: "/approvals",   tone: "amber"  as const, status: "READY" },
+  { title: "Quant XAU Desk", description: "Live gold price, RSI/MACD/EMA signals, trade journal, auto-trader.", href: "/xau", tone: "amber" as const, status: "LIVE" },
 ];
 
 export function LiveDashboard() {
@@ -83,7 +74,7 @@ export function LiveDashboard() {
       <section className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
           <h2 className="display text-lg font-semibold">Modules</h2>
-          <span className="mono text-[10px] text-ink-dim uppercase tracking-widest">11 total</span>
+          <span className="mono text-[10px] text-ink-dim uppercase tracking-widest">{MODULES.length} total</span>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {MODULES.map((m) => <ModuleCard key={m.href} {...m} />)}
