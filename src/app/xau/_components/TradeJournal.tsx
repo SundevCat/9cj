@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 type Trade = {
-  id: number;
+  id: string;
   createdAt: string;
   direction: "LONG" | "SHORT";
   entry: number;
@@ -34,7 +34,7 @@ type BrokerAccount = {
 export function TradeJournal() {
   const [trades, setTrades] = useState<Trade[]>([]);
   const [submitting, setSubmitting] = useState(false);
-  const [closing, setClosing] = useState<number | null>(null);
+  const [closing, setClosing] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
@@ -165,7 +165,7 @@ export function TradeJournal() {
     }
   }
 
-  async function closeLiveTrade(tradeId: number) {
+  async function closeLiveTrade(tradeId: string) {
     setClosing(tradeId);
     setErr(null);
     try {

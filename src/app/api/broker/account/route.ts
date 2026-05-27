@@ -26,7 +26,7 @@ export async function GET() {
       cached.fetchedAt > thirtySecondsAgo &&
       cached.broker === broker.name
     ) {
-      return NextResponse.json({ account: cached, live: extractLive(parseRaw(cached.raw)), broker: broker.name, cached: true });
+      return NextResponse.json({ account: cached, live: extractLive(cached.raw), broker: broker.name, cached: true });
     }
 
     const account = await getAccount();
@@ -40,7 +40,7 @@ export async function GET() {
         realizedPL: account.realizedPL,
         marginUsed: account.marginUsed,
         openTradeCount: account.openTradeCount,
-        raw: JSON.stringify({ broker: broker.name, ...account }),
+        raw: { broker: broker.name, ...account } as object,
       },
     });
 
@@ -52,10 +52,6 @@ export async function GET() {
 }
 
 type LiveAccount = { balance?: number; unrealizedPL?: number; realizedPL?: number; marginUsed?: number; openTradeCount?: number; nav?: number; currency?: string; broker?: string };
-
-function parseRaw(raw: string): unknown {
-  try { return JSON.parse(raw); } catch { return null; }
-}
 
 function extractLive(raw: unknown): LiveAccount | null {
   if (!raw || typeof raw !== "object") return null;

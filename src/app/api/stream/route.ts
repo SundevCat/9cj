@@ -9,27 +9,28 @@ export const dynamic = "force-dynamic";
 type StreamEvent =
   | { type: "tick"; time: number }
   | { type: "price"; value: number; delta: number; source: string }
-  | { type: "memory"; entry: { id: number; agent: string; tag: string; message: string; createdAt: string } }
+  | { type: "memory"; entry: { id: string; agent: string; tag: string; message: string; createdAt: string } }
   | { type: "alert"; severity: "HIGH" | "MEDIUM" | "LOW"; title: string; message: string; module: string }
   | { type: "metrics"; servicesHealthy: number; servicesTotal: number; approvalsPending: number; pricePerf: number };
 
 export async function GET(req: NextRequest) {
   const encoder = new TextEncoder();
-  let lastMemoryId = 0;
-  let lastTaskId = 0;
-  let lastViolationId = 0;
+  let memoryCursor: Date = new Date();
+  let taskCursor: Date = new Date();
+  let violationCursor: Date = new Date();
   let stopped = false;
 
   const stream = new ReadableStream({
     async start(controller) {
-      const [maxMem, maxTask, maxVio] = await Promise.all([
-        prisma.memory.findFirst({ orderBy: { id: "desc" }, select: { id: true } }),
-        prisma.task.findFirst({ orderBy: { id: "desc" }, select: { id: true } }),
-        prisma.violation.findFirst({ orderBy: { id: "desc" }, select: { id: true } }),
+      // Seed cursors so we only emit things created after stream open
+      const [latestMem, latestTask, latestVio] = await Promise.all([
+        prisma.memory.findFirst({ orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
+        prisma.task.findFirst({ orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
+        prisma.violation.findFirst({ orderBy: { ts: "desc" }, select: { ts: true } }),
       ]);
-      lastMemoryId = maxMem?.id ?? 0;
-      lastTaskId = maxTask?.id ?? 0;
-      lastViolationId = maxVio?.id ?? 0;
+      memoryCursor = latestMem?.createdAt ?? new Date(0);
+      taskCursor = latestTask?.createdAt ?? new Date(0);
+      violationCursor = latestVio?.ts ?? new Date(0);
 
       function send(event: StreamEvent) {
         if (stopped) return;
@@ -54,12 +55,12 @@ export async function GET(req: NextRequest) {
           send({ type: "price", value: spot.price, delta: Number(delta.toFixed(2)), source: spot.source });
 
           const fresh = await prisma.memory.findMany({
-            where: { id: { gt: lastMemoryId } },
-            orderBy: { id: "asc" },
+            where: { createdAt: { gt: memoryCursor } },
+            orderBy: { createdAt: "asc" },
             take: 25,
           });
           for (const m of fresh) {
-            lastMemoryId = m.id;
+            memoryCursor = m.createdAt;
             send({
               type: "memory",
               entry: {
@@ -73,29 +74,29 @@ export async function GET(req: NextRequest) {
           }
 
           const vios = await prisma.violation.findMany({
-            where: { id: { gt: lastViolationId } },
-            orderBy: { id: "asc" },
+            where: { ts: { gt: violationCursor } },
+            orderBy: { ts: "asc" },
             take: 10,
           });
           for (const v of vios) {
-            lastViolationId = v.id;
+            violationCursor = v.ts;
             const policy = await prisma.policy.findUnique({ where: { id: v.policyId } });
             send({
               type: "alert",
               severity: v.severity as "HIGH" | "MEDIUM" | "LOW",
-              title: policy?.name ?? `Policy #${v.policyId}`,
+              title: policy?.name ?? `Policy ${v.policyId}`,
               message: `${v.module} · ${v.action}`,
               module: v.module,
             });
           }
 
           const tasks = await prisma.task.findMany({
-            where: { id: { gt: lastTaskId } },
-            orderBy: { id: "asc" },
+            where: { createdAt: { gt: taskCursor } },
+            orderBy: { createdAt: "asc" },
             take: 10,
           });
           for (const t of tasks) {
-            lastTaskId = t.id;
+            taskCursor = t.createdAt;
             if (t.status === "PENDING") {
               send({
                 type: "alert",
@@ -137,7 +138,7 @@ export async function GET(req: NextRequest) {
           send({
             type: "memory",
             entry: {
-              id: -1,
+              id: "stream-error",
               agent: "stream",
               tag: "ERR",
               message: `pulse error: ${(e as Error).message}`,

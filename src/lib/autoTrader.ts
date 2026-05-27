@@ -38,7 +38,7 @@ export type Config = {
 
 export type State = {
   lastActionAt: string | null;
-  openTradeId: number | null;
+  openTradeId: string | null;
   lastDirection: "LONG" | "SHORT" | null;
   lastDecision: string | null;
 };
@@ -106,7 +106,7 @@ export async function getState(): Promise<State> {
   ]);
   return {
     lastActionAt: lastActionAt || null,
-    openTradeId: openTradeIdRaw ? Number(openTradeIdRaw) : null,
+    openTradeId: openTradeIdRaw || null,
     lastDirection: (lastDirection as "LONG" | "SHORT") || null,
     lastDecision: lastDecision || null,
   };
@@ -175,7 +175,7 @@ async function openLivePosition(
   direction: "LONG" | "SHORT",
   size: number,
   config: Config
-): Promise<{ tradeId: number | null; detail: string; queued: boolean }> {
+): Promise<{ tradeId: string | null; detail: string; queued: boolean }> {
   // Get current spot for SL/TP calc + entry seed
   const spot = await fetchSpotXAU();
   const entryHint = spot.price;
@@ -232,7 +232,7 @@ async function openLivePosition(
 }
 
 // Close a live position via broker.closeTrade and update local Trade row.
-async function closeLivePosition(tradeId: number): Promise<{ closePrice: number; pnl: number }> {
+async function closeLivePosition(tradeId: string): Promise<{ closePrice: number; pnl: number }> {
   const trade = await prisma.trade.findUnique({ where: { id: tradeId } });
   if (!trade || !trade.brokerDealId) throw new Error(`trade ${tradeId} not closeable`);
 
@@ -326,7 +326,7 @@ export async function tick(): Promise<TickResult> {
   const wantDirection: "LONG" | "SHORT" = consensus === "BUY" ? "LONG" : "SHORT";
 
   // Resolve current open auto-trade (verify it still exists + isn't closed)
-  let openTrade: { id: number; direction: string; status: string } | null = null;
+  let openTrade: { id: string; direction: string; status: string } | null = null;
   if (state.openTradeId) {
     openTrade = await prisma.trade.findUnique({
       where: { id: state.openTradeId },
@@ -394,7 +394,7 @@ export async function triggerManual(direction: "LONG" | "SHORT"): Promise<TickRe
   const state = await getState();
 
   // Resolve current open auto-trade
-  let openTrade: { id: number; direction: string; status: string } | null = null;
+  let openTrade: { id: string; direction: string; status: string } | null = null;
   if (state.openTradeId) {
     openTrade = await prisma.trade.findUnique({
       where: { id: state.openTradeId },
@@ -466,7 +466,7 @@ export type AutotraderStatus = {
   votes: { buy: number; sell: number; neutral: number };
   verdict: "BUY" | "SELL" | "NEUTRAL";
   verdictReason: string;
-  openTradeId: number | null;
+  openTradeId: string | null;
   openTradeDirection: "LONG" | "SHORT" | null;
   nextAction: {
     action: TickResult["action"];

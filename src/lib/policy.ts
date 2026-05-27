@@ -12,7 +12,7 @@ export type ActionContext = {
 };
 
 export type PolicyHit = {
-  policyId: number;
+  policyId: string;
   name: string;
   ruleType: string;
   threshold: number;
@@ -80,7 +80,7 @@ export async function checkPolicies(ctx: ActionContext): Promise<PolicyResult> {
 export async function recordViolation(
   hit: PolicyHit,
   ctx: ActionContext,
-  taskId: number | null = null
+  taskId: string | null = null
 ) {
   await prisma.$transaction([
     prisma.violation.create({
@@ -88,7 +88,7 @@ export async function recordViolation(
         policyId: hit.policyId,
         module: ctx.module,
         action: ctx.action,
-        context: JSON.stringify({ ...ctx, reason: hit.reason }),
+        context: { ...ctx, reason: hit.reason } as object,
         severity: hit.severity,
         taskId: taskId ?? undefined,
       },

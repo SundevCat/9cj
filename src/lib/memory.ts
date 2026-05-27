@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 
 export type MemoryTag = "TRADE" | "POLICY" | "AI" | "SYS" | "OK" | "WARN" | "ERR";
@@ -13,7 +14,7 @@ export async function recordMemory(
       agent,
       tag,
       message,
-      metadata: metadata ? JSON.stringify(metadata) : null,
+      metadata: metadata ? (metadata as Prisma.InputJsonValue) : undefined,
     },
   });
 }

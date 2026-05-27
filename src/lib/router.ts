@@ -6,7 +6,7 @@ import { recordMemory } from "./memory";
 // or rejected by a HIGH-severity policy.
 export type RouteResult = {
   decision: "ALLOWED" | "QUEUED_FOR_APPROVAL";
-  taskId: number | null;
+  taskId: string | null;
   hits: Awaited<ReturnType<typeof checkPolicies>>["hits"];
 };
 
@@ -28,7 +28,7 @@ export async function routeAction(ctx: ActionContext): Promise<RouteResult> {
         module: ctx.module,
         priority,
         status: "PENDING",
-        metadata: JSON.stringify({ ctx, hits: result.hits }),
+        metadata: { ctx, hits: result.hits } as object,
       },
     });
     for (const hit of result.hits) {

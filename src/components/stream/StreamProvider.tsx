@@ -5,7 +5,7 @@ import { createContext, useContext, useEffect, useRef, useState } from "react";
 export type StreamEvent =
   | { type: "tick"; time: number }
   | { type: "price"; value: number; delta: number; source: string }
-  | { type: "memory"; entry: { id: number; agent: string; tag: string; message: string; createdAt: string } }
+  | { type: "memory"; entry: { id: string; agent: string; tag: string; message: string; createdAt: string } }
   | { type: "alert"; severity: "HIGH" | "MEDIUM" | "LOW"; title: string; message: string; module: string }
   | { type: "metrics"; servicesHealthy: number; servicesTotal: number; approvalsPending: number; pricePerf: number };
 

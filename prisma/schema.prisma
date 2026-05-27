@@ -1,27 +1,27 @@
 // 9CJ Corp — Personal AI Operating System
-// Prisma schema (SQLite — single file at prisma/dev.db)
+// Prisma schema (MongoDB)
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "mongodb"
   url      = env("DATABASE_URL")
 }
 
 model Trade {
-  id            Int      @id @default(autoincrement())
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
   createdAt     DateTime @default(now())
   direction     String   // LONG | SHORT
   entry         Float
   exit          Float?
-  size          Float    // contracts (1 contract = 100 oz on Capital GOLD CFD)
+  size          Float
   pnl           Float?
-  status        String   @default("OPEN")  // OPEN | CLOSED | CANCELLED
+  status        String   @default("OPEN")
   notes         String?
-  brokerDealId  String?  // Capital dealId (persistent position id)
-  brokerOrderId String?  // Capital dealReference
+  brokerDealId  String?
+  brokerOrderId String?
   fillPrice     Float?
   isLive        Boolean  @default(false)
   instrument    String   @default("XAU_USD")
@@ -33,41 +33,41 @@ model Trade {
 }
 
 model Memory {
-  id        Int      @id @default(autoincrement())
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
   createdAt DateTime @default(now())
   agent     String
-  tag       String   // TRADE | POLICY | AI | SYS | OK | WARN | ERR
+  tag       String
   message   String
-  metadata  String?  // JSON-encoded; SQLite has no native JSON
+  metadata  Json?
 
   @@index([createdAt])
   @@index([tag])
 }
 
 model Policy {
-  id          Int      @id @default(autoincrement())
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
   name        String
   description String
-  ruleType    String   // MAX_TRADE_SIZE | DAILY_LOSS | etc
+  ruleType    String
   threshold   Float
   enabled     Boolean  @default(true)
   violations  Int      @default(0)
 }
 
 model Task {
-  id        Int      @id @default(autoincrement())
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
   createdAt DateTime @default(now())
   title     String
   module    String
   priority  String   @default("MEDIUM")
   status    String   @default("PENDING")
-  metadata  String?  // JSON-encoded
+  metadata  Json?
 
   @@index([status])
 }
 
 model Price {
-  id        Int      @id @default(autoincrement())
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
   timestamp DateTime @default(now())
   open      Float
   high      Float
@@ -80,28 +80,28 @@ model Price {
 }
 
 model Setting {
-  key       String   @id
+  key       String   @id @map("_id")
   value     String
   updatedAt DateTime @updatedAt
 }
 
 model Violation {
-  id        Int      @id @default(autoincrement())
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
   ts        DateTime @default(now())
-  policyId  Int
+  policyId  String   @db.ObjectId
   module    String
   action    String
-  context   String   // JSON-encoded
+  context   Json
   severity  String   @default("MEDIUM")
   resolved  Boolean  @default(false)
-  taskId    Int?
+  taskId    String?  @db.ObjectId
 
   @@index([ts])
   @@index([resolved])
 }
 
 model BrokerSnapshot {
-  id             Int      @id @default(autoincrement())
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
   fetchedAt      DateTime @default(now())
   broker         String   @default("capital")
   accountId      String
@@ -110,7 +110,7 @@ model BrokerSnapshot {
   realizedPL     Float
   marginUsed     Float
   openTradeCount Int
-  raw            String   // JSON-encoded
+  raw            Json
 
   @@index([fetchedAt])
 }

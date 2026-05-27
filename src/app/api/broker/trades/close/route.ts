@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 // POST /api/broker/trades/close
 // Body: { tradeId: number }  — local Trade.id (must be a live broker trade)
 export async function POST(req: NextRequest) {
-  let body: { tradeId?: number };
+  let body: { tradeId?: string };
   try {
     body = await req.json();
   } catch {

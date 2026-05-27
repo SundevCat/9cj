@@ -20,7 +20,7 @@ const STRATEGY_OPTIONS: { id: Strategy; label: string; desc: string }[] = [
 
 type State = {
   lastActionAt: string | null;
-  openTradeId: number | null;
+  openTradeId: string | null;
   lastDirection: "LONG" | "SHORT" | null;
   lastDecision: string | null;
 };
@@ -40,14 +40,14 @@ type Status = {
   votes: { buy: number; sell: number; neutral: number };
   verdict: Signal;
   verdictReason: string;
-  openTradeId: number | null;
+  openTradeId: string | null;
   openTradeDirection: "LONG" | "SHORT" | null;
   nextAction: { action: string; detail: string };
   asOf: string;
 };
 
 type Policy = {
-  id: number;
+  id: string;
   name: string;
   ruleType: string;
   threshold: number;
